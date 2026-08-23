@@ -19,3 +19,20 @@ export async function fetchHealth(): Promise<any | null> {
 export function healthText(health: any | null): string {
   return describeHealth(CLIENT_PROTOCOL, health);
 }
+
+const headers = () => getContext()?.getRequestHeaders?.() ?? {};
+
+export async function getConfig(): Promise<any> {
+  const res = await fetch('/api/plugins/dollars/config', { headers: headers() });
+  return res.ok ? res.json() : null;
+}
+
+export async function saveSecondary(cfg: { url: string; model: string; key: string }): Promise<any> {
+  const res = await fetch('/api/plugins/dollars/config/secondary', {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg),
+  });
+  if (!res.ok) throw new Error('保存失败 ' + res.status);
+  return res.json();
+}
