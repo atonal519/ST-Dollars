@@ -1,6 +1,8 @@
 import { createApp } from 'vue';
 import App from '@/App.vue';
 import '@/styles.css';
+import { store } from '@/state';
+import { fetchHealth, healthText } from '@/transport';
 
 const HOST_ID = 'dollars-app-host';
 
@@ -48,5 +50,6 @@ function toggle() {
     mount();
     injectWand(toggle);
     console.log('[Dollars] M0 前端已加载');
+    fetchHealth().then(h => { store.status = healthText(h); });
   } else if (tries < 150) { setTimeout(() => whenReady(tries + 1), 200); }
 })();
