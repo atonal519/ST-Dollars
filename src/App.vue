@@ -45,7 +45,13 @@ async function runAnalyze() {
     const src = await readSource();
     anaMsg.value = `读到卡「${src.card.name}」+ 世界书 ${src.worldbook.length} 条，分析中…`;
     const r = await analyze(src);
-    anaMsg.value = r?.ok ? ('后端收到：' + JSON.stringify(r.received || r.counts)) : ('失败：' + (r?.error || '未知'));
+    if (r?.ok) {
+      const names = (r.characters || []).map((c: any) => c.display_name).join('、');
+      const fails = (r.failures || []).map((f: any) => `${f.name}(${f.error})`).join('；');
+      anaMsg.value = `识别 ${JSON.stringify(r.counts)}\n角色：${names || '(无)'}` + (fails ? `\n失败：${fails}` : '');
+    } else {
+      anaMsg.value = '失败：' + (r?.error || '未知');
+    }
   } catch (e: any) {
     anaMsg.value = '出错：' + (e?.message || e);
   }

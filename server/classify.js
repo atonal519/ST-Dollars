@@ -1,30 +1,29 @@
 const { callSecondary } = require('./llm.js');
+const { extractJson } = require('./jsonutil.js');
 
-function batchEntries(entries, size = 12) {
+function batchEntries(entries, size = 8) {
   const out = [];
   for (let i = 0; i < entries.length; i += size) out.push(entries.slice(i, i + size));
   return out;
 }
-function stripFence(s) {
-  const m = String(s || '').match(/```(?:json)?\s*([\s\S]*?)```/i);
-  return (m ? m[1] : s).trim();
-}
 function parseClassify(text) {
-  const obj = JSON.parse(stripFence(text));
-  if (!Array.isArray(obj.items)) throw new Error('分类响应缺少 items');
-  return obj.items;
+  const obj = extractJson(text);
+  const items = Array.isArray(obj) ? obj
+    : (Array.isArray(obj.items) ? obj.items : (Array.isArray(obj.result) ? obj.result : null));
+  if (!items) throw new Error('分类响应缺少 items，原文：' + String(text).slice(0, 200));
+  return items;
 }
 function buildClassifyPrompt(batch) {
-  const list = batch.map(e => `- uid=${e.uid} comment=${JSON.stringify(e.comment)} 内容前120字=${JSON.stringify((e.content || '').slice(0, 120))}`).join('\n');
+  const list = batch.map(e => `- uid=${e.uid} comment=${JSON.stringify(e.comment)} 内容前160字=${JSON.stringify((e.content || '').slice(0, 160))}`).join('\n');
   return [
-    { role: 'system', content: '你是世界书条目分类器。判断每个条目属于哪类，严格只输出 JSON，不要解释、不要代码围栏。type 取值：character(角色定义) / setting(世界设定) / rule(规则或系统指令) / lore(背景传说) / other。若是角色，给 candidate_name（角色名）。' },
-    { role: 'user', content: `条目：\n${list}\n\n只输出 JSON：{"items":[{"uid":"...","type":"character|setting|rule|lore|other","candidate_name":"角色名或空","confidence":0~1}]}` },
+    { role: 'system', content: '你是世界书条目分类器，任务是找出「拥有专属人物设定档的主要角色」。严格只输出 JSON，不要解释、不要代码围栏。\ntype 取值：\n- character_profile：围绕单个角色的完整设定档（含姓名/外貌/性格/身份等，标题常形如「角色_某某」或含 <Character_某某>）\n- character_supplement：某个已有角色的补充（如 NSFW、单独的关系/癖好），附属主角色而非新角色\n- setting：世界观/势力/地理等设定\n- rule：系统规则/指令/输出格式\n- lore：背景传说/事件\n- other：其它（含仅在剧情里被顺带提到、没有专属设定档的路人）\n只有 character_profile 算主要角色；仅被提及的人名不要标 character_profile。' },
+    { role: 'user', content: `条目：\n${list}\n\n输出 JSON（name 填该条目涉及的角色名、无则空字符串）：{"items":[{"uid":"<uid>","type":"character_profile|character_supplement|setting|rule|lore|other","name":"","confidence":0}]}` },
   ];
 }
 function mergeClassified(results) {
   const chMap = new Map(); let others = 0;
   for (const items of results) for (const it of items) {
-    if (it.type === 'character') { if (!chMap.has(it.uid)) chMap.set(it.uid, { uid: it.uid, candidate_name: it.candidate_name || '' }); }
+    if (it.type === 'character_profile') { if (!chMap.has(it.uid)) chMap.set(it.uid, { uid: it.uid, name: it.name || '' }); }
     else others++;
   }
   return { characters: [...chMap.values()], others };
@@ -32,8 +31,8 @@ function mergeClassified(results) {
 async function classifyEntries(cfg, entries) {
   const batches = batchEntries(entries);
   const results = [];
-  for (const b of batches) {   // 顺序分批（质量优先/避免限流）
-    const text = await callSecondary(cfg, buildClassifyPrompt(b), { maxTokens: 2048, temperature: 0 });
+  for (const b of batches) {
+    const text = await callSecondary(cfg, buildClassifyPrompt(b), { maxTokens: 4096, temperature: 0 });
     results.push(parseClassify(text));
   }
   return mergeClassified(results);
