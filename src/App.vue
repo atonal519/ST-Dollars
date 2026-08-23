@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { store } from '@/state';
-import { getConfig, saveSecondary, pingLlm } from '@/transport';
+import { getConfig, saveSecondary, pingLlm, analyze } from '@/transport';
+import { readSource } from '@/st/reader';
 
 const url = ref('');
 const model = ref('');
 const key = ref('');
 const cfgMsg = ref('');
+const anaMsg = ref('');
 
 onMounted(async () => {
   const c = await getConfig();
@@ -36,6 +38,18 @@ async function test() {
     cfgMsg.value = '请求出错：' + (e?.message || e) + '（后端可能没重启？）';
   }
 }
+
+async function runAnalyze() {
+  anaMsg.value = '读取素材…';
+  try {
+    const src = await readSource();
+    anaMsg.value = `读到卡「${src.card.name}」+ 世界书 ${src.worldbook.length} 条，分析中…`;
+    const r = await analyze(src);
+    anaMsg.value = r?.ok ? ('后端收到：' + JSON.stringify(r.received || r.counts)) : ('失败：' + (r?.error || '未知'));
+  } catch (e: any) {
+    anaMsg.value = '出错：' + (e?.message || e);
+  }
+}
 </script>
 
 <template>
@@ -49,8 +63,10 @@ async function test() {
       <div class="dollars-cfg-row">
         <button @click="save">保存</button>
         <button @click="test">测试连接</button>
+        <button @click="runAnalyze">识别测试</button>
       </div>
       <span class="dollars-cfg-msg">{{ cfgMsg }}</span>
+      <span class="dollars-cfg-msg">{{ anaMsg }}</span>
     </div>
   </div>
 </template>

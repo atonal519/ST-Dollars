@@ -41,6 +41,14 @@ async function init(router) {
       res.status(502).json({ ok: false, error: e.message });
     }
   });
+  // 初始化分析（M1-B1 先 echo 计数验证传输；M1-B1 Task3 换成真识别）
+  router.post('/init/analyze', async (req, res) => {
+    try {
+      const { card, worldbook } = req.body || {};
+      if (!Array.isArray(worldbook)) return res.status(400).json({ ok: false, error: '缺少 worldbook' });
+      res.json({ ok: true, received: { cardName: card?.name || '(无名)', entryCount: worldbook.length } });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
 
   // 同步注册完毕后再做异步初始化
   db = openDb(__dirname);

@@ -43,3 +43,14 @@ export async function pingLlm(): Promise<any> {
   try { return JSON.parse(text); }
   catch { return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 120) || '(空响应)'}` }; }
 }
+
+export async function analyze(payload: any): Promise<any> {
+  const res = await fetch('/api/plugins/dollars/init/analyze', {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch { return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 160)}` }; }
+}
