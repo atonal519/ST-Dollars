@@ -36,3 +36,10 @@ export async function saveSecondary(cfg: { url: string; model: string; key: stri
   if (!res.ok) throw new Error('保存失败 ' + res.status);
   return res.json();
 }
+
+export async function pingLlm(): Promise<any> {
+  const res = await fetch('/api/plugins/dollars/llm/ping', { method: 'POST', headers: headers() });
+  const text = await res.text();
+  try { return JSON.parse(text); }
+  catch { return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 120) || '(空响应)'}` }; }
+}

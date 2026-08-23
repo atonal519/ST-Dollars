@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { store } from '@/state';
-import { getConfig, saveSecondary } from '@/transport';
+import { getConfig, saveSecondary, pingLlm } from '@/transport';
 
 const url = ref('');
 const model = ref('');
@@ -26,6 +26,16 @@ async function save() {
     cfgMsg.value = '保存失败：' + (e?.message || e);
   }
 }
+
+async function test() {
+  cfgMsg.value = '测试中…';
+  try {
+    const r = await pingLlm();
+    cfgMsg.value = r?.ok ? ('连通 ✓ 模型回复：' + r.reply) : ('失败：' + (r?.error || '未知'));
+  } catch (e: any) {
+    cfgMsg.value = '请求出错：' + (e?.message || e) + '（后端可能没重启？）';
+  }
+}
 </script>
 
 <template>
@@ -36,7 +46,10 @@ async function save() {
       <input v-model="url" placeholder="Secondary API URL (…/v1)" />
       <input v-model="model" placeholder="模型名" />
       <input v-model="key" type="password" placeholder="API Key（留空=不改）" />
-      <button @click="save">保存</button>
+      <div class="dollars-cfg-row">
+        <button @click="save">保存</button>
+        <button @click="test">测试连接</button>
+      </div>
       <span class="dollars-cfg-msg">{{ cfgMsg }}</span>
     </div>
   </div>

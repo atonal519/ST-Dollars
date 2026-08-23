@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { openDb, migrate, metaGet, metaSet } = require('./db.js');
 const { getSecondary, setSecondary, maskSecondary } = require('./config.js');
+const { callSecondary } = require('./llm.js');
 
 const info = { id: 'dollars', name: 'Dollars', description: 'Dollars for SillyTavern — server plugin' };
 
@@ -32,6 +33,14 @@ async function init(router) {
     res.json({ ok: true, config: maskSecondary(getSecondary(db)) });
   });
   router.get('/config', (req, res) => res.json({ secondary: maskSecondary(getSecondary(db)) }));
+  router.post('/llm/ping', async (req, res) => {
+    try {
+      const out = await callSecondary(getSecondary(db), [{ role: 'user', content: '只回复两个字：在的' }], { maxTokens: 32, temperature: 0 });
+      res.json({ ok: true, reply: out });
+    } catch (e) {
+      res.status(502).json({ ok: false, error: e.message });
+    }
+  });
 
   // 同步注册完毕后再做异步初始化
   db = openDb(__dirname);
