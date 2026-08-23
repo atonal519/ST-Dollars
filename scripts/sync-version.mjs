@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = path.dirname(fileURLToPath(import.meta.url)) + '/..';
+const ver = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+const mfPath = path.join(root, 'manifest.json');
+const mf = JSON.parse(fs.readFileSync(mfPath, 'utf8'));
+mf.version = ver;
+mf.js = `dist/index.js?ver=${ver}`;
+fs.writeFileSync(mfPath, JSON.stringify(mf, null, 2) + '\n');
+console.log('[sync-version]', ver);

@@ -1,0 +1,5 @@
+.dollars-root { position: fixed; right: 16px; bottom: 80px; width: 260px; padding: 14px 16px;
+  background: #0d0d0f; color: #e5e7eb; border: 1px solid #26262e; border-radius: 12px; z-index: 10060;
+  font-family: system-ui, sans-serif; }
+.dollars-title { font-weight: 600; margin-bottom: 6px; }
+.dollars-status { font-size: 12px; color: #9ca3af; white-space: pre-wrap; }
