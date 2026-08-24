@@ -17,7 +17,13 @@ function buildMergePrompt(characters) {
 }
 async function mergeCharacters(cfg, characters) {
   if (characters.length <= 1) return characters;
-  const text = await callSecondary(cfg, buildMergePrompt(characters), { maxTokens: 2048, temperature: 0 });
-  return parseMerge(text);
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {   // 带重试，防 LLM 偶发坏格式
+    try {
+      const text = await callSecondary(cfg, buildMergePrompt(characters), { maxTokens: 2048, temperature: 0 });
+      return parseMerge(text);
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
 }
 module.exports = { parseMerge, buildMergePrompt, mergeCharacters };

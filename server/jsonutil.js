@@ -23,6 +23,6 @@ function extractJson(text) {
   try { return JSON.parse(s); } catch { /* 继续 */ }
   const ext = extractBalanced(s);
   if (ext) { try { return JSON.parse(ext); } catch { /* 落到报错 */ } }
-  throw new Error('无法解析 JSON');
+  throw new Error('无法解析 JSON：' + s.slice(0, 300));
 }
 module.exports = { extractJson, extractBalanced, stripFence };

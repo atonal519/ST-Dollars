@@ -32,8 +32,16 @@ async function classifyEntries(cfg, entries) {
   const batches = batchEntries(entries);
   const results = [];
   for (const b of batches) {
-    const text = await callSecondary(cfg, buildClassifyPrompt(b), { maxTokens: 4096, temperature: 0 });
-    results.push(parseClassify(text));
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {   // 每批带重试，防 LLM 偶发坏格式
+      try {
+        const text = await callSecondary(cfg, buildClassifyPrompt(b), { maxTokens: 4096, temperature: 0 });
+        results.push(parseClassify(text));
+        lastErr = null;
+        break;
+      } catch (e) { lastErr = e; }
+    }
+    if (lastErr) throw lastErr;
   }
   return mergeClassified(results);
 }
