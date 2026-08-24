@@ -46,7 +46,7 @@ async function runAnalyze() {
     anaMsg.value = `读到卡「${src.card.name}」+ 世界书 ${src.worldbook.length} 条，分析中…`;
     const r = await analyze(src);
     if (r?.ok) {
-      const names = (r.characters || []).map((c: any) => c.display_name).join('、');
+      const names = (r.characters || []).map((c: any) => `${c.display_name}[${c.tier === 'main' ? '主' : 'NPC'}·${c.volume}]`).join('、');
       const fails = (r.failures || []).map((f: any) => `${f.name}(${f.error})`).join('；');
       anaMsg.value = `识别 ${JSON.stringify(r.counts)}\n角色：${names || '(无)'}` + (fails ? `\n失败：${fails}` : '');
     } else {

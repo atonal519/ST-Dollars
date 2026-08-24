@@ -1,8 +1,9 @@
 const { classifyEntries } = require('./classify.js');
 const { extractCharacter } = require('./extract.js');
 const { mergeCharacters } = require('./merge.js');
+const { assignTiers } = require('./tier.js');
 
-// 三阶段：A 分类（找专属主定义候选）→ B 并发抽取（可 skip / 带重试）→ C 合并同一角色归一。不落库。
+// 四阶段：A 分类（专属主定义候选）→ B 并发抽取（skip/重试）→ C 合并归一 → D 体量分层(main/npc)。不落库。
 async function runAnalyze(cfg, { card, worldbook }) {
   const entries = Array.isArray(worldbook) ? worldbook : [];
   const byUid = new Map(entries.map(e => [String(e.uid), e]));
@@ -17,7 +18,9 @@ async function runAnalyze(cfg, { card, worldbook }) {
   const raw = extracted.filter(x => x && !x._error && !x.skip);
   const skipped = extracted.filter(x => x && x.skip).length;
   const failures = extracted.filter(x => x && x._error).map(x => ({ name: x.name || '?', error: String(x._error).slice(0, 100) }));
-  const characters = await mergeCharacters(cfg, raw);
+  const mergedChars = await mergeCharacters(cfg, raw);
+  const characters = assignTiers(mergedChars, entries);
+  const mains = characters.filter(c => c.tier === 'main').length;
   return {
     counts: {
       worldbook: entries.length,
@@ -26,6 +29,8 @@ async function runAnalyze(cfg, { card, worldbook }) {
       skipped,
       extract_failed: failures.length,
       characters: characters.length,
+      main: mains,
+      npc: characters.length - mains,
       others: merged.others,
     },
     characters,
