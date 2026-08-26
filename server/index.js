@@ -45,11 +45,11 @@ async function init(router) {
   // 初始化分析：两阶段识别角色（不落库）
   router.post('/init/analyze', async (req, res) => {
     try {
-      const { card, worldbook } = req.body || {};
+      const { card, worldbook, cardType } = req.body || {};
       if (!Array.isArray(worldbook)) return res.status(400).json({ ok: false, error: '缺少 worldbook' });
       const cfg = getSecondary(db);
       if (!cfg?.url || !cfg?.key) return res.status(400).json({ ok: false, error: '请先配置 Secondary API' });
-      const result = await runAnalyze(cfg, { card, worldbook });
+      const result = await runAnalyze(cfg, { card, worldbook, cardType });
       res.json({ ok: true, ...result });
     } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
   });

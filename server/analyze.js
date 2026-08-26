@@ -3,8 +3,8 @@ const { extractCharacter } = require('./extract.js');
 const { mergeCharacters } = require('./merge.js');
 const { assignTiers } = require('./tier.js');
 
-// 四阶段：A 分类（专属主定义候选）→ B 并发抽取（skip/重试）→ C 合并归一 → D 体量分层(main/npc)。不落库。
-async function runAnalyze(cfg, { card, worldbook }) {
+// 四阶段：A 分类 → B 并发抽取(skip/重试) → C 合并归一 → D 按卡类型分层(main/npc)。不落库。
+async function runAnalyze(cfg, { card, worldbook, cardType }) {
   const entries = Array.isArray(worldbook) ? worldbook : [];
   const byUid = new Map(entries.map(e => [String(e.uid), e]));
   const merged = await classifyEntries(cfg, entries);
@@ -19,7 +19,7 @@ async function runAnalyze(cfg, { card, worldbook }) {
   const skipped = extracted.filter(x => x && x.skip).length;
   const failures = extracted.filter(x => x && x._error).map(x => ({ name: x.name || '?', error: String(x._error).slice(0, 100) }));
   const mergedChars = await mergeCharacters(cfg, raw);
-  const characters = assignTiers(mergedChars, entries);
+  const characters = assignTiers(mergedChars, entries, cardType);
   const mains = characters.filter(c => c.tier === 'main').length;
   return {
     counts: {
