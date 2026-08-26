@@ -4,6 +4,9 @@ const { openDb, migrate, metaGet, metaSet } = require('./db.js');
 const { getSecondary, setSecondary, maskSecondary } = require('./config.js');
 const { callSecondary } = require('./llm.js');
 const { runAnalyze } = require('./analyze.js');
+const crypto = require('node:crypto');
+const { buildWorld } = require('./world.js');
+const { getUniverseByChat, countsByUniverse } = require('./repo.js');
 
 const info = { id: 'dollars', name: 'Dollars', description: 'Dollars for SillyTavern — server plugin' };
 
@@ -52,6 +55,22 @@ async function init(router) {
       const result = await runAnalyze(cfg, { card, worldbook, cardType });
       res.json({ ok: true, ...result });
     } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
+  });
+  // 确认建世界：写入 SQLite（事务）+ 绑定 Universe 到该聊天
+  router.post('/init/commit', (req, res) => {
+    try {
+      const { stChatId, cardType, characters } = req.body || {};
+      if (!stChatId || !Array.isArray(characters)) return res.status(400).json({ ok: false, error: '缺 stChatId / characters' });
+      const existing = getUniverseByChat(db, stChatId);
+      if (existing) return res.status(409).json({ ok: false, error: '该聊天已初始化 Universe', universeId: existing.universe_id });
+      const universeId = crypto.randomUUID();
+      const r = buildWorld(db, { universeId, stChatId, characters, cardType: cardType || 'multi' });
+      res.json({ ok: true, universeId, counts: r.counts });
+    } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+  });
+  router.get('/universe', (req, res) => {
+    const u = getUniverseByChat(db, req.query.stChatId || '');
+    res.json({ universe: u || null, counts: u ? countsByUniverse(db, u.universe_id) : null });
   });
 
   // 同步注册完毕后再做异步初始化

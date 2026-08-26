@@ -23,6 +23,7 @@ function migrate(db) {
     CREATE TABLE IF NOT EXISTS room_membership (
       id TEXT PRIMARY KEY, universe_id TEXT, room_id TEXT, account_id TEXT, state TEXT, created_at INTEGER);
   `);
+  try { db.exec(`ALTER TABLE account ADD COLUMN tier TEXT DEFAULT 'main';`); } catch { /* 列已存在 */ }
 }
 function metaGet(db, key) {
   const row = db.prepare('SELECT value FROM _meta WHERE key = ?').get(key);
