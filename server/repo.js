@@ -39,4 +39,10 @@ function recentMessages(db, roomId, limit = 20) {
   const rows = db.prepare('SELECT * FROM message WHERE room_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?').all(roomId, limit);
   return rows.reverse();
 }
-module.exports = { createUniverse, getUniverseByChat, insertCharacter, insertAccount, createRoom, addMembership, countsByUniverse, insertMessage, recentMessages };
+function roomAccounts(db, roomId) {
+  return db.prepare(`SELECT a.account_id, a.nickname, a.tier, a.account_kind, a.owner_character_id
+    FROM room_membership rm JOIN account a ON a.account_id = rm.account_id
+    WHERE rm.room_id = ? AND rm.state = 'joined'`).all(roomId);
+}
+function characterById(db, characterId) { return db.prepare('SELECT * FROM character WHERE character_id = ?').get(characterId); }
+module.exports = { createUniverse, getUniverseByChat, insertCharacter, insertAccount, createRoom, addMembership, countsByUniverse, insertMessage, recentMessages, roomAccounts, characterById };
