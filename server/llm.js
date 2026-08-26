@@ -5,9 +5,10 @@ function extractContent(data) {
   return c.trim();
 }
 
-// 后端直接 fetch 用户端点（Node 无 CORS）；url 末尾自动补 /chat/completions；带超时
-async function callSecondary(cfg, messages, { maxTokens = 1024, temperature, signal, timeoutMs = 60000 } = {}) {
-  if (!cfg?.url || !cfg?.key) throw new Error('Secondary API 未配置');
+// 通用 LLM 调用：直连用户端点（Node 无 CORS）；url 末尾自动补 /chat/completions；带超时。
+// Primary / Secondary 都用它，传各自 cfg。
+async function callLLM(cfg, messages, { maxTokens = 1024, temperature, signal, timeoutMs = 60000 } = {}) {
+  if (!cfg?.url || !cfg?.key) throw new Error('API 未配置');
   const base = String(cfg.url).replace(/\/+$/, '');
   const endpoint = /\/chat\/completions$/.test(base) ? base : base + '/chat/completions';
   const body = { model: cfg.model, messages, stream: false };
@@ -32,4 +33,6 @@ async function callSecondary(cfg, messages, { maxTokens = 1024, temperature, sig
     clearTimeout(timer);
   }
 }
-module.exports = { extractContent, callSecondary };
+
+const callSecondary = callLLM;   // 保留别名（/llm/ping 用）
+module.exports = { extractContent, callLLM, callSecondary };

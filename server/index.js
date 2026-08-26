@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { openDb, migrate, metaGet, metaSet } = require('./db.js');
-const { getSecondary, setSecondary, maskSecondary } = require('./config.js');
+const { getSecondary, setSecondary, maskSecondary, getPrimary, setPrimary, maskPrimary } = require('./config.js');
 const { callSecondary } = require('./llm.js');
 const { runAnalyze } = require('./analyze.js');
 const crypto = require('node:crypto');
@@ -36,7 +36,14 @@ async function init(router) {
     setSecondary(db, { url, model, key: key || prev?.key || '' });   // key 留空则保留原 key
     res.json({ ok: true, config: maskSecondary(getSecondary(db)) });
   });
-  router.get('/config', (req, res) => res.json({ secondary: maskSecondary(getSecondary(db)) }));
+  router.post('/config/primary', (req, res) => {
+    const { url, model, key } = req.body || {};
+    if (!url || !model) return res.status(400).json({ error: 'url 和 model 必填' });
+    const prev = getPrimary(db);
+    setPrimary(db, { url, model, key: key || prev?.key || '' });
+    res.json({ ok: true, config: maskPrimary(getPrimary(db)) });
+  });
+  router.get('/config', (req, res) => res.json({ secondary: maskSecondary(getSecondary(db)), primary: maskPrimary(getPrimary(db)) }));
   router.post('/llm/ping', async (req, res) => {
     try {
       const out = await callSecondary(getSecondary(db), [{ role: 'user', content: '只回复两个字：在的' }], { maxTokens: 32, temperature: 0 });
