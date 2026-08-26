@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import os from 'node:os'; import fs from 'node:fs'; import path from 'node:path';
 const require = createRequire(import.meta.url);
 const { openDb, migrate } = require('./db.js');
-const { createUniverse, getUniverseByChat, insertCharacter, insertAccount, createRoom, addMembership, countsByUniverse } = require('./repo.js');
+const { createUniverse, getUniverseByChat, insertCharacter, insertAccount, createRoom, addMembership, countsByUniverse, insertMessage, recentMessages } = require('./repo.js');
 
 test('建 universe/角色/账号/房间/成员 并统计', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dollars-repo-'));
@@ -19,5 +19,15 @@ test('建 universe/角色/账号/房间/成员 并统计', () => {
   addMembership(db, { id: 'm1', universeId: u, roomId: 'r1', accountId: 'a1', state: 'joined' });
   addMembership(db, { id: 'm2', universeId: u, roomId: 'r1', accountId: 'au', state: 'joined' });
   assert.deepEqual(countsByUniverse(db, u), { characters: 1, accounts: 2, rooms: 1 });
+  db.close();
+});
+
+test('消息插入 + 最近N条(升序)', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dollars-msg-'));
+  const db = openDb(dir); migrate(db);
+  for (let i = 0; i < 5; i++) insertMessage(db, { messageId: 'm' + i, universeId: 'u', roomId: 'r', senderAccountId: 'a' + i, type: 'text', content: 'c' + i, cycleId: 'cyc1', status: 'committed' });
+  const recent = recentMessages(db, 'r', 3);
+  assert.equal(recent.length, 3);
+  assert.deepEqual(recent.map(m => m.content), ['c2', 'c3', 'c4']);
   db.close();
 });

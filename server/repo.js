@@ -31,4 +31,12 @@ function countsByUniverse(db, u) {
     rooms: one('SELECT COUNT(*) n FROM room WHERE universe_id = ?'),
   };
 }
-module.exports = { createUniverse, getUniverseByChat, insertCharacter, insertAccount, createRoom, addMembership, countsByUniverse };
+function insertMessage(db, m) {
+  db.prepare(`INSERT INTO message (message_id,universe_id,room_id,sender_account_id,type,content,cycle_id,status,created_at)
+    VALUES (?,?,?,?,?,?,?,?,?)`).run(m.messageId, m.universeId, m.roomId, m.senderAccountId, m.type || 'text', m.content ?? '', m.cycleId ?? null, m.status || 'committed', Date.now());
+}
+function recentMessages(db, roomId, limit = 20) {
+  const rows = db.prepare('SELECT * FROM message WHERE room_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?').all(roomId, limit);
+  return rows.reverse();
+}
+module.exports = { createUniverse, getUniverseByChat, insertCharacter, insertAccount, createRoom, addMembership, countsByUniverse, insertMessage, recentMessages };

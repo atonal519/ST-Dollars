@@ -24,6 +24,9 @@ function migrate(db) {
       id TEXT PRIMARY KEY, universe_id TEXT, room_id TEXT, account_id TEXT, state TEXT, created_at INTEGER);
   `);
   try { db.exec(`ALTER TABLE account ADD COLUMN tier TEXT DEFAULT 'main';`); } catch { /* 列已存在 */ }
+  db.exec(`CREATE TABLE IF NOT EXISTS message (
+    message_id TEXT PRIMARY KEY, universe_id TEXT, room_id TEXT, sender_account_id TEXT,
+    type TEXT, content TEXT, cycle_id TEXT, status TEXT, created_at INTEGER);`);
 }
 function metaGet(db, key) {
   const row = db.prepare('SELECT value FROM _meta WHERE key = ?').get(key);
