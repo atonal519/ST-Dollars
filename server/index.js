@@ -6,7 +6,8 @@ const { callSecondary } = require('./llm.js');
 const { runAnalyze } = require('./analyze.js');
 const crypto = require('node:crypto');
 const { buildWorld } = require('./world.js');
-const { getUniverseByChat, countsByUniverse } = require('./repo.js');
+const { getUniverseByChat, countsByUniverse, insertMessage, recentMessages } = require('./repo.js');
+const { runCycle } = require('./cycle.js');
 
 const info = { id: 'dollars', name: 'Dollars', description: 'Dollars for SillyTavern — server plugin' };
 
@@ -78,6 +79,22 @@ async function init(router) {
   router.get('/universe', (req, res) => {
     const u = getUniverseByChat(db, req.query.stChatId || '');
     res.json({ universe: u || null, counts: u ? countsByUniverse(db, u.universe_id) : null });
+  });
+  // 跑一轮 Conversation Cycle：先 commit 用户消息，再编排，返回本轮新增消息
+  router.post('/cycle/run', async (req, res) => {
+    try {
+      const { universeId, roomId, userMessages } = req.body || {};
+      if (!universeId || !roomId) return res.status(400).json({ ok: false, error: '缺 universeId/roomId' });
+      const cfgSecondary = getSecondary(db);
+      const cfgPrimary = getPrimary(db) || cfgSecondary;   // 缺 Primary 回退 Secondary
+      if (!cfgSecondary?.url) return res.status(400).json({ ok: false, error: '请先配置 API' });
+      for (const um of (userMessages || [])) {
+        insertMessage(db, { messageId: 'msg_' + crypto.randomUUID().slice(0, 8), universeId, roomId, senderAccountId: um.accountId || 'acc_user', type: 'text', content: um.content, status: 'committed' });
+      }
+      const r = await runCycle({ db, cfgPrimary, cfgSecondary, universeId, roomId });
+      const after = recentMessages(db, roomId, 1000);
+      res.json({ ok: true, produced: r.produced, status: r.status, messages: after.slice(Math.max(0, after.length - r.produced)) });
+    } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
   });
 
   // 同步注册完毕后再做异步初始化
