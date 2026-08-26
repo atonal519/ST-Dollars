@@ -54,3 +54,18 @@ export async function analyze(payload: any): Promise<any> {
   try { return JSON.parse(text); }
   catch { return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 160)}` }; }
 }
+
+export async function commitWorld(payload: any): Promise<any> {
+  const res = await fetch('/api/plugins/dollars/init/commit', {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const t = await res.text();
+  try { return JSON.parse(t); } catch { return { ok: false, error: `HTTP ${res.status}: ${t.slice(0, 160)}` }; }
+}
+
+export async function getUniverse(stChatId: string): Promise<any> {
+  const res = await fetch('/api/plugins/dollars/universe?stChatId=' + encodeURIComponent(stChatId), { headers: headers() });
+  return res.ok ? res.json() : null;
+}

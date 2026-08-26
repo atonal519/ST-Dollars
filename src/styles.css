@@ -8,3 +8,14 @@
 .dollars-cfg button { background: #33333d; color: #e5e7eb; border: none; border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
 .dollars-cfg-row { display: flex; gap: 6px; }
 .dollars-cfg-msg { font-size: 11px; color: #8b8b96; white-space: pre-wrap; }
+.dollars-init { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; border-top: 1px solid #1c1c22; padding-top: 8px; }
+.dollars-row { display: flex; gap: 6px; align-items: center; }
+.dollars-row select { flex: 1; background: #1c1c22; color: #e5e7eb; border: 1px solid #33333d; border-radius: 6px; padding: 4px 6px; font-size: 12px; }
+.dollars-row button { background: #33333d; color: #e5e7eb; border: none; border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; }
+.dollars-charlist { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.dollars-char { font-size: 12px; padding: 4px 8px; border: 1px solid #26262e; border-radius: 6px; cursor: pointer; }
+.dollars-char:hover { border-color: #3f3f4a; }
+.dollars-main { color: #f59e0b; font-weight: 600; margin-right: 6px; }
+.dollars-npc { color: #6b7280; margin-right: 6px; }
+.dollars-commit { background: #f59e0b; color: #1a1a1a; border: none; border-radius: 8px; padding: 7px; font-size: 13px; font-weight: 600; cursor: pointer; }
+.dollars-initmsg { font-size: 11px; color: #8b8b96; white-space: pre-wrap; }

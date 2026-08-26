@@ -1,14 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { store } from '@/state';
-import { getConfig, saveSecondary, pingLlm, analyze } from '@/transport';
-import { readSource } from '@/st/reader';
+import { getConfig, saveSecondary, pingLlm } from '@/transport';
+import InitPanel from '@/ui/InitPanel.vue';
 
 const url = ref('');
 const model = ref('');
 const key = ref('');
 const cfgMsg = ref('');
-const anaMsg = ref('');
 
 onMounted(async () => {
   const c = await getConfig();
@@ -33,27 +32,9 @@ async function test() {
   cfgMsg.value = '测试中…';
   try {
     const r = await pingLlm();
-    cfgMsg.value = r?.ok ? ('连通 ✓ 模型回复：' + r.reply) : ('失败：' + (r?.error || '未知'));
+    cfgMsg.value = r?.ok ? ('连通 ✓ ' + r.reply) : ('失败：' + (r?.error || '未知'));
   } catch (e: any) {
-    cfgMsg.value = '请求出错：' + (e?.message || e) + '（后端可能没重启？）';
-  }
-}
-
-async function runAnalyze() {
-  anaMsg.value = '读取素材…';
-  try {
-    const src = await readSource();
-    anaMsg.value = `读到卡「${src.card.name}」+ 世界书 ${src.worldbook.length} 条，分析中…`;
-    const r = await analyze(src);
-    if (r?.ok) {
-      const names = (r.characters || []).map((c: any) => `${c.display_name}[${c.tier === 'main' ? '主' : 'NPC'}·${c.volume}]`).join('、');
-      const fails = (r.failures || []).map((f: any) => `${f.name}(${f.error})`).join('；');
-      anaMsg.value = `识别 ${JSON.stringify(r.counts)}\n角色：${names || '(无)'}` + (fails ? `\n失败：${fails}` : '');
-    } else {
-      anaMsg.value = '失败：' + (r?.error || '未知');
-    }
-  } catch (e: any) {
-    anaMsg.value = '出错：' + (e?.message || e);
+    cfgMsg.value = '请求出错：' + (e?.message || e);
   }
 }
 </script>
@@ -69,10 +50,9 @@ async function runAnalyze() {
       <div class="dollars-cfg-row">
         <button @click="save">保存</button>
         <button @click="test">测试连接</button>
-        <button @click="runAnalyze">识别测试</button>
       </div>
       <span class="dollars-cfg-msg">{{ cfgMsg }}</span>
-      <span class="dollars-cfg-msg">{{ anaMsg }}</span>
     </div>
+    <InitPanel />
   </div>
 </template>
