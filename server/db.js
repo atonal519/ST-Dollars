@@ -27,6 +27,13 @@ function migrate(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS message (
     message_id TEXT PRIMARY KEY, universe_id TEXT, room_id TEXT, sender_account_id TEXT,
     type TEXT, content TEXT, cycle_id TEXT, status TEXT, created_at INTEGER);`);
+  const columns = db.prepare('PRAGMA table_info(message)').all();
+  if (!columns.some(c => c.name === 'profile_snapshot')) db.exec('ALTER TABLE message ADD COLUMN profile_snapshot TEXT');
+  db.exec(`CREATE INDEX IF NOT EXISTS message_room_status ON message(room_id, status, created_at);
+    CREATE TABLE IF NOT EXISTS conversation_cycle (
+      request_id TEXT PRIMARY KEY, universe_id TEXT NOT NULL, room_id TEXT NOT NULL,
+      status TEXT NOT NULL, produced INTEGER DEFAULT 0, error_code TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);`);
 }
 function metaGet(db, key) {
   const row = db.prepare('SELECT value FROM _meta WHERE key = ?').get(key);

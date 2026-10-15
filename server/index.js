@@ -6,8 +6,8 @@ const { callSecondary } = require('./llm.js');
 const { runAnalyze } = require('./analyze.js');
 const crypto = require('node:crypto');
 const { buildWorld } = require('./world.js');
-const { getUniverseByChat, countsByUniverse, insertMessage, recentMessages } = require('./repo.js');
-const { runCycle } = require('./cycle.js');
+const { getUniverseByChat } = require('./repo.js');
+const { createChatService, ChatError } = require('./chat.js');
 
 const info = { id: 'dollars', name: 'Dollars', description: 'Dollars for SillyTavern — server plugin' };
 
@@ -20,6 +20,16 @@ function protocolVersion() {
 }
 
 async function init(router) {
+  let chat;
+  const handle = fn => async (req, res) => {
+    try {
+      const result = await fn(req);
+      res.status(result.ok === false ? 502 : 200).json(result);
+    } catch (e) {
+      res.status(e instanceof ChatError ? e.status : 500).json({ ok: false, code: e.code || 'server_error',
+        error: e instanceof ChatError ? e.message : '服务器读取失败，请重试。' });
+    }
+  };
   // 路由必须在首个 await 前同步注册
   router.get('/health', (req, res) => {
     let dbState = 'error';
@@ -76,30 +86,17 @@ async function init(router) {
       res.json({ ok: true, universeId, counts: r.counts });
     } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
   });
-  router.get('/universe', (req, res) => {
-    const u = getUniverseByChat(db, req.query.stChatId || '');
-    res.json({ universe: u || null, counts: u ? countsByUniverse(db, u.universe_id) : null });
-  });
-  // 跑一轮 Conversation Cycle：先 commit 用户消息，再编排，返回本轮新增消息
-  router.post('/cycle/run', async (req, res) => {
-    try {
-      const { universeId, roomId, userMessages } = req.body || {};
-      if (!universeId || !roomId) return res.status(400).json({ ok: false, error: '缺 universeId/roomId' });
-      const cfgSecondary = getSecondary(db);
-      const cfgPrimary = getPrimary(db) || cfgSecondary;   // 缺 Primary 回退 Secondary
-      if (!cfgSecondary?.url) return res.status(400).json({ ok: false, error: '请先配置 API' });
-      for (const um of (userMessages || [])) {
-        insertMessage(db, { messageId: 'msg_' + crypto.randomUUID().slice(0, 8), universeId, roomId, senderAccountId: um.accountId || 'acc_user', type: 'text', content: um.content, status: 'committed' });
-      }
-      const r = await runCycle({ db, cfgPrimary, cfgSecondary, universeId, roomId });
-      const after = recentMessages(db, roomId, 1000);
-      res.json({ ok: true, produced: r.produced, status: r.status, messages: after.slice(Math.max(0, after.length - r.produced)) });
-    } catch (e) { res.status(502).json({ ok: false, error: e.message }); }
-  });
+  router.get('/universe', handle(req => chat.universeForChat(req.query.stChatId)));
+  router.get('/room', handle(req => chat.roomSnapshot(req.query)));
+  router.post('/messages/pending', handle(req => chat.sendPending(req.body || {})));
+  router.post('/messages/pending/update', handle(req => chat.editPending(req.body || {})));
+  router.post('/messages/pending/remove', handle(req => chat.removePending(req.body || {})));
+  router.post('/cycle/run', handle(req => chat.continueCycle(req.body || {})));
 
   // 同步注册完毕后再做异步初始化
   db = openDb(__dirname);
   migrate(db);
+  chat = createChatService({ db });
 }
 async function exit() { try { db && db.close(); } catch {} }
 

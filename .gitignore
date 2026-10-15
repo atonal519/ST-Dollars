@@ -1,2 +1,22 @@
 node_modules
+.pnpm-store/
 *.log
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Local SQLite databases and journal files
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Runtime data and local outputs
+data/
+/output/
+plugins/dollars/
+coverage/

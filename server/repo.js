@@ -32,11 +32,13 @@ function countsByUniverse(db, u) {
   };
 }
 function insertMessage(db, m) {
-  db.prepare(`INSERT INTO message (message_id,universe_id,room_id,sender_account_id,type,content,cycle_id,status,created_at)
-    VALUES (?,?,?,?,?,?,?,?,?)`).run(m.messageId, m.universeId, m.roomId, m.senderAccountId, m.type || 'text', m.content ?? '', m.cycleId ?? null, m.status || 'committed', Date.now());
+  const account = db.prepare('SELECT nickname, avatar_color FROM account WHERE account_id = ? AND universe_id = ?').get(m.senderAccountId, m.universeId);
+  const profile = m.profileSnapshot || { nickname: account?.nickname || '匿名', avatar_color: account?.avatar_color || '#a3a5b0' };
+  db.prepare(`INSERT INTO message (message_id,universe_id,room_id,sender_account_id,type,content,cycle_id,status,created_at,profile_snapshot)
+    VALUES (?,?,?,?,?,?,?,?,?,?)`).run(m.messageId, m.universeId, m.roomId, m.senderAccountId, m.type || 'text', m.content ?? '', m.cycleId ?? null, m.status || 'committed', Date.now(), JSON.stringify(profile));
 }
 function recentMessages(db, roomId, limit = 20) {
-  const rows = db.prepare('SELECT * FROM message WHERE room_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?').all(roomId, limit);
+  const rows = db.prepare("SELECT * FROM message WHERE room_id = ? AND status IN ('committed','pending_sync') ORDER BY rowid DESC LIMIT ?").all(roomId, limit);
   return rows.reverse();
 }
 function roomAccounts(db, roomId) {

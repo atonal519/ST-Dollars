@@ -1,6 +1,6 @@
 {
   "display_name": "Dollars",
-  "version": "0.0.1",
+  "version": "0.0.3",
   "author": "",
-  "js": "dist/index.js?ver=0.0.1"
+  "js": "dist/index.js?ver=0.0.3"
 }

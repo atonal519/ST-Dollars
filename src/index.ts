@@ -2,7 +2,6 @@ import { createApp } from 'vue';
 import App from '@/App.vue';
 import '@/styles.css';
 import { store } from '@/state';
-import { fetchHealth, healthText } from '@/transport';
 
 const HOST_ID = 'dollars-app-host';
 
@@ -14,7 +13,9 @@ function mount() {
   shadow.textContent = '';
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = new URL('./index.css', import.meta.url).href;  // dist/index.css 同级
+  const stylesheet = new URL(/* @vite-ignore */ './index.css', import.meta.url);
+  stylesheet.search = new URL(import.meta.url).search; // JS/CSS 使用相同版本，避免旧样式缓存。
+  link.href = stylesheet.href;
   shadow.appendChild(link);
   const container = document.createElement('div');
   shadow.appendChild(container);
@@ -42,14 +43,14 @@ function injectWand(onClick: () => void) {
 
 function toggle() {
   const el = document.getElementById(HOST_ID);
-  if (el) el.style.setProperty('display', el.style.getPropertyValue('display') === 'none' ? 'contents' : 'none', 'important');
+  store.panelOpen = !store.panelOpen;
+  if (el) el.style.setProperty('display', store.panelOpen ? 'contents' : 'none', 'important');
 }
 
 (function whenReady(tries = 0) {
   if ((globalThis as any).SillyTavern?.getContext) {
     mount();
     injectWand(toggle);
-    console.log('[Dollars] M0 前端已加载');
-    fetchHealth().then(h => { store.status = healthText(h); });
+    console.log('[Dollars] 前端已加载');
   } else if (tries < 150) { setTimeout(() => whenReady(tries + 1), 200); }
 })();
