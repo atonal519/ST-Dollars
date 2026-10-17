@@ -1,68 +1,106 @@
 <script setup lang="ts">
-import { reactive, onMounted, onBeforeUnmount, watch, ref } from 'vue';
-import { store } from '@/state';
-import * as api from '@/transport';
-import { currentChatScope } from '@/st/chat';
-import { onChatChanged } from '@/st/events';
-import { createChatController, initialChatState } from '@/chat.logic.mjs';
-import InitPanel from '@/ui/InitPanel.vue';
-import RoomPanel from '@/ui/RoomPanel.vue';
-import SettingsPanel from '@/ui/SettingsPanel.vue';
+import { computed, ref } from 'vue';
+import { createEmptyWorld } from '@/domain/world';
+import type { Activity, Person } from '@/domain/world';
+import { projectWorld } from '@/graph/project-world';
+import WorldGraph from '@/graph/WorldGraph.vue';
 
-const state = reactive(initialChatState());
-const controller = createChatController({ state, api, currentChat: currentChatScope, clientProtocol: api.CLIENT_PROTOCOL, healthText: api.healthText });
-const tab = ref('chat');
-let unsubscribe = () => {};
-let poll: ReturnType<typeof setInterval>;
-let polling = false;
-function close() {
-  store.panelOpen = false;
-  document.getElementById('dollars-app-host')?.style.setProperty('display', 'none', 'important');
-}
-function escape(event: KeyboardEvent) { if (event.key === 'Escape') close(); }
-async function reload() {
-  if (currentChatScope().key === state.chatKey && state.universe && state.compatible) await controller.refreshRoom();
-  else await controller.loadChat();
-}
-onMounted(() => {
-  unsubscribe = onChatChanged(() => { void controller.loadChat(); });
-  void controller.loadChat();
-  poll = setInterval(async () => {
-    if (polling || !store.panelOpen || !(state.running || state.activeCycle)) return;
-    polling = true;
-    try { await controller.refreshRoom(); } finally { polling = false; }
-  }, 1800);
+const emit = defineEmits<{ close: [] }>();
+const world = ref(createEmptyWorld());
+const graph = computed(() => projectWorld(world.value));
+const selectedId = ref<string | null>(null);
+const page = ref<'world' | 'settings'>('world');
+const selected = computed(() => world.value.people.find(item => item.id === selectedId.value)
+  ?? world.value.activities.find(item => item.id === selectedId.value)
+  ?? null);
+const selectedEvents = computed(() => {
+  if (!selected.value) return [];
+  const personIds = 'participantIds' in selected.value ? selected.value.participantIds : [selected.value.id];
+  return world.value.events.filter(event => event.participantIds.some(id => personIds.includes(id)));
 });
-watch(() => store.panelOpen, value => { if (value) void reload(); });
-onBeforeUnmount(() => { unsubscribe(); clearInterval(poll); controller.dispose(); });
+const selectedKnowledge = computed(() => {
+  if (!selected.value || !('status' in selected.value && 'name' in selected.value)) return [];
+  return world.value.knowledge
+    .filter(item => item.personId === selected.value?.id)
+    .map(item => ({ ...item, event: world.value.events.find(event => event.id === item.eventId) }));
+});
+
+function closeOnEscape(event: KeyboardEvent) {
+  if (event.key === 'Escape') emit('close');
+}
+function activityStatus(activity: Activity): string {
+  return { planned: '计划中', active: '进行中', waiting: '等待中', completed: '已完成' }[activity.status];
+}
+function activitiesFor(person: Person): Activity[] {
+  return world.value.activities.filter(activity => activity.participantIds.includes(person.id));
+}
+function personById(id: string): Person | undefined {
+  return world.value.people.find(person => person.id === id);
+}
 </script>
 
 <template>
-  <section class="dollars-root" role="dialog" aria-label="Dollars 匿名聊天室" @keydown="escape">
-    <header class="dollars-topbar">
-      <div class="dollars-brand">DOLLARS<span>匿名聊天室</span></div>
-      <nav class="dollars-tabs" aria-label="Dollars 页面">
-        <button :aria-pressed="tab === 'chat'" @click="tab = 'chat'">聊天</button>
-        <button :aria-pressed="tab === 'settings'" @click="tab = 'settings'">设置</button>
-      </nav>
-      <button class="dollars-close" aria-label="关闭 Dollars" @click="close">×</button>
-    </header>
-    <div v-if="!state.compatible" class="dollars-connection" role="status">
-      <p>{{ state.backendStatus }}</p>
-      <button :disabled="state.loading" @click="controller.loadChat()">重新连接</button>
-    </div>
-    <template v-else>
-      <SettingsPanel v-if="tab === 'settings'" />
-      <div v-else-if="state.loading" class="dollars-empty" role="status">正在打开当前聊天…</div>
-      <div v-else-if="!state.stChatId" class="dollars-empty">先在 SillyTavern 中打开一个聊天。</div>
-      <div v-else-if="!state.universe" class="dollars-onboarding">
-        <h2>建立这个世界的大厅</h2>
-        <p>从当前角色卡与世界书识别角色，确认后为他们创建匿名账号。</p>
-        <InitPanel :key="state.chatKey" :chat-key="state.chatKey" @initialized="controller.loadChat()" />
-      </div>
-      <RoomPanel v-else-if="state.room" :key="state.chatKey + state.room.room_id" :state="state" :controller="controller" />
-      <div v-else class="dollars-empty">还没有你已加入的房间。<button @click="controller.loadChat()">重新读取</button></div>
-      <div v-if="state.error && !state.room" class="dollars-error" role="alert">{{ state.error }}</div>
-    </template>
-  </section>
+  <div class="world-backdrop" @click.self="emit('close')">
+    <section class="world-panel" role="dialog" aria-modal="true" aria-label="人物世界" @keydown="closeOnEscape">
+      <header class="world-header">
+        <div class="brand"><strong>DOLLARS</strong><span>人物世界骨架</span></div>
+        <div class="story-time">剧情时间：{{ world.storyTime?.text ?? '尚未提供' }}</div>
+        <nav aria-label="人物世界页面">
+          <button :aria-pressed="page === 'world'" @click="page = 'world'">世界图谱</button>
+          <button :aria-pressed="page === 'settings'" @click="page = 'settings'">设置</button>
+        </nav>
+        <button class="close-button" aria-label="关闭人物世界" @click="emit('close')">×</button>
+      </header>
+
+      <main v-if="page === 'world'" class="world-content">
+        <template v-if="graph.nodes.length">
+          <div class="graph-area">
+            <WorldGraph :graph="graph" :selected-id="selectedId" @select="selectedId = $event" />
+          </div>
+          <aside v-if="selected" class="detail-card" aria-live="polite">
+            <template v-if="'name' in selected">
+              <p class="eyebrow">人物</p>
+              <h2>{{ selected.name }}</h2>
+              <p>{{ selected.status }}</p>
+              <p>{{ selected.description }}</p>
+              <h3>正在参与</h3>
+              <p v-for="activity in activitiesFor(selected)" :key="activity.id">
+                {{ activity.title }} · {{ activityStatus(activity) }}
+              </p>
+              <h3>已发生的相关事件</h3>
+              <p v-for="event in selectedEvents" :key="event.id">{{ event.title }}</p>
+              <h3>人物获知</h3>
+              <p v-for="item in selectedKnowledge" :key="item.eventId">
+                {{ item.event?.title ?? '相关事件' }}：{{ item.reason }}
+              </p>
+            </template>
+            <template v-else>
+              <p class="eyebrow">活动 · {{ activityStatus(selected) }}</p>
+              <h2>{{ selected.title }}</h2>
+              <p>{{ selected.description }}</p>
+              <h3>参与人物</h3>
+              <p v-for="id in selected.participantIds" :key="id">{{ personById(id)?.name ?? id }}</p>
+              <h3>相关已发生事件</h3>
+              <p v-for="event in selectedEvents" :key="event.id">{{ event.title }}</p>
+            </template>
+          </aside>
+        </template>
+        <div v-else class="empty-world" role="status">
+          <div class="empty-mark" aria-hidden="true">○</div>
+          <h1>人物世界尚未接入</h1>
+          <p>接入人物资料与世界记录后，这里会显示人物、活动和明确的参与关系。</p>
+          <p>当前没有绑定聊天、人物或剧情时间，也不会生成虚构活动。</p>
+          <button class="advance-button" disabled title="本阶段尚未接入资料、模型和存储">推进世界 · 尚未接入</button>
+        </div>
+      </main>
+
+      <main v-else class="settings-content">
+        <p class="eyebrow">当前阶段</p>
+        <h1>设置尚未接入</h1>
+        <p>模型请求、人物资料来源和世界存储尚未连接。本页面不会收集或保存 API 设置。</p>
+        <p>人物资料由其来源管理；本插件后续只保存自身的活动、事件与知情记录。</p>
+      </main>
+      <footer class="world-footer">图谱是人物与活动记录的展示；事件结果和人物知情仍以世界记录为准。</footer>
+    </section>
+  </div>
 </template>

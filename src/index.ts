@@ -1,56 +1,73 @@
 import { createApp } from 'vue';
 import App from '@/App.vue';
 import '@/styles.css';
-import { store } from '@/state';
+import { getHostContext } from '@/host/host-context';
 
-const HOST_ID = 'dollars-app-host';
+const HOST_ID = 'dollars-world-host';
+const MENU_ITEM_ID = 'dollars-world-open';
 
-function mount() {
-  let host = document.getElementById(HOST_ID);
-  if (!host) { host = document.createElement('div'); host.id = HOST_ID; document.body.appendChild(host); }
-  host.style.setProperty('display', 'none', 'important');  // 默认隐藏，点魔杖才打开
-  const shadow = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
-  shadow.textContent = '';
-  const link = document.createElement('link');
-  link.rel = 'stylesheet';
-  const stylesheet = new URL(/* @vite-ignore */ './index.css', import.meta.url);
-  stylesheet.search = new URL(import.meta.url).search; // JS/CSS 使用相同版本，避免旧样式缓存。
-  link.href = stylesheet.href;
-  shadow.appendChild(link);
-  const container = document.createElement('div');
-  shadow.appendChild(container);
-  createApp(App).mount(container);
+function togglePanel() {
+  const host = document.getElementById(HOST_ID);
+  if (!host) return;
+  host.style.setProperty('display', host.style.display === 'none' ? 'contents' : 'none', 'important');
 }
 
-function injectWand(onClick: () => void) {
-  const tryInject = () => {
+function mountPanel() {
+  let host = document.getElementById(HOST_ID);
+  if (!host) {
+    host = document.createElement('div');
+    host.id = HOST_ID;
+    document.body.appendChild(host);
+  }
+  host.style.setProperty('display', 'none', 'important');
+
+  const shadow = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
+  const stylesheet = document.createElement('link');
+  stylesheet.rel = 'stylesheet';
+  const cssUrl = new URL(/* @vite-ignore */ './index.css', import.meta.url);
+  cssUrl.search = new URL(import.meta.url).search;
+  stylesheet.href = cssUrl.href;
+  shadow.replaceChildren(stylesheet);
+
+  const container = document.createElement('div');
+  shadow.appendChild(container);
+  createApp(App, { onClose: togglePanel }).mount(container);
+}
+
+function installMenuItem() {
+  const tryInstall = () => {
     const menu = document.getElementById('extensionsMenu');
     if (!menu) return false;
-    if (document.getElementById('dollars_wand')) return true;
+    if (document.getElementById(MENU_ITEM_ID)) return true;
     const item = document.createElement('div');
-    item.id = 'dollars_wand';
+    item.id = MENU_ITEM_ID;
     item.className = 'list-group-item flex-container flexGap5 interactable';
-    item.innerHTML = '<div class="fa-solid fa-comments extensionsMenuExtensionButton"></div><span>Dollars</span>';
-    item.addEventListener('click', onClick);
+    const icon = document.createElement('div');
+    icon.className = 'fa-solid fa-diagram-project extensionsMenuExtensionButton';
+    const label = document.createElement('span');
+    label.textContent = '人物世界';
+    item.append(icon, label);
+    item.addEventListener('click', togglePanel);
     menu.appendChild(item);
     return true;
   };
-  if (tryInject()) return;
-  const obs = new MutationObserver(() => { if (tryInject()) obs.disconnect(); });
-  obs.observe(document.body, { childList: true, subtree: true });
-  setTimeout(() => obs.disconnect(), 30000);
+
+  if (tryInstall()) return;
+  const observer = new MutationObserver(() => {
+    if (tryInstall()) observer.disconnect();
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  setTimeout(() => observer.disconnect(), 30_000);
 }
 
-function toggle() {
-  const el = document.getElementById(HOST_ID);
-  store.panelOpen = !store.panelOpen;
-  if (el) el.style.setProperty('display', store.panelOpen ? 'contents' : 'none', 'important');
+function initialize(tries = 0) {
+  if (getHostContext()) {
+    mountPanel();
+    installMenuItem();
+    console.info('[Dollars] 人物世界骨架已加载');
+    return;
+  }
+  if (tries < 150) setTimeout(() => initialize(tries + 1), 200);
 }
 
-(function whenReady(tries = 0) {
-  if ((globalThis as any).SillyTavern?.getContext) {
-    mount();
-    injectWand(toggle);
-    console.log('[Dollars] 前端已加载');
-  } else if (tries < 150) { setTimeout(() => whenReady(tries + 1), 200); }
-})();
+initialize();

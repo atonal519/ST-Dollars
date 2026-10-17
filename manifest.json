@@ -1,6 +1,6 @@
 {
-  "display_name": "Dollars",
-  "version": "0.0.3",
+  "display_name": "Dollars 人物世界",
+  "version": "0.1.0-alpha.1",
   "author": "",
-  "js": "dist/index.js?ver=0.0.3"
+  "js": "dist/index.js?ver=0.1.0-alpha.1"
 }

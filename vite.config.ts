@@ -1,29 +1,21 @@
 import vue from '@vitejs/plugin-vue';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 
-const relSt = path.relative(
-  path.join(__dirname, 'dist'),
-  __dirname.substring(0, __dirname.lastIndexOf('public') + 'public'.length),
-);
-const globals: Record<string, string> = { jquery: '$', lodash: '_', toastr: 'toastr' };
+const root = path.dirname(fileURLToPath(import.meta.url));
 
-export default defineConfig(({ mode }) => ({
-  plugins: [
-    vue(),
-    {
-      name: 'sillytavern-resolver',
-      enforce: 'pre',
-      resolveId(id) {
-        if (id.startsWith('@sillytavern/'))
-          return { id: path.join(relSt, id.replace('@sillytavern/', '')).replaceAll('\\', '/') + '.js', external: true };
-        if (id in globals) return { id, external: true };
-      },
-    },
-  ],
-  resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
+export default defineConfig({
+  plugins: [vue()],
+  resolve: { alias: { '@': path.resolve(root, 'src') } },
   build: {
-    rollupOptions: { input: 'src/index.ts', output: { format: 'es', entryFileNames: '[name].js', chunkFileNames: '[name].[hash].chunk.js', assetFileNames: '[name].[ext]', globals }, external: id => id in globals },
-    outDir: 'dist', emptyOutDir: false, sourcemap: mode === 'production' ? true : 'inline', minify: mode === 'production', target: 'esnext',
+    outDir: 'dist',
+    emptyOutDir: true,
+    sourcemap: true,
+    target: 'esnext',
+    rollupOptions: {
+      input: path.resolve(root, 'src/index.ts'),
+      output: { format: 'es', entryFileNames: '[name].js', assetFileNames: '[name].[ext]' },
+    },
   },
-}));
+});

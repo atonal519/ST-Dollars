@@ -1,12 +1,11 @@
 {
   "name": "st-dollars",
-  "version": "0.0.3",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "node scripts/sync-version.mjs && vite build",
     "watch": "node scripts/sync-version.mjs && vite build --watch --mode development",
-    "sync:server": "node scripts/sync-server.mjs",
     "test": "node --test",
     "typecheck": "node node_modules/vue-tsc/bin/vue-tsc.js --noEmit"
   },
