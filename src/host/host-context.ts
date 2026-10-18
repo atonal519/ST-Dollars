@@ -1,5 +1,8 @@
 export interface HostContext {
   [key: string]: unknown;
+  getRequestHeaders?: () => HeadersInit;
+  extensionSettings?: Record<string, unknown>;
+  saveSettingsDebounced?: () => void;
 }
 
 interface HostGlobal {

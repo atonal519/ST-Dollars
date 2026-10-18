@@ -1,6 +1,6 @@
 {
-  "display_name": "Dollars 人物世界",
-  "version": "0.1.0-alpha.1",
+  "display_name": "百面相",
+  "version": "0.1.0-alpha.11",
   "author": "",
-  "js": "dist/index.js?ver=0.1.0-alpha.1"
+  "js": "dist/index.js?ver=0.1.0-alpha.11"
 }

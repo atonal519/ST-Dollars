@@ -1,15 +1,36 @@
 import { createApp } from 'vue';
+import { h, ref } from 'vue';
 import App from '@/App.vue';
 import '@/styles.css';
 import { getHostContext } from '@/host/host-context';
+import { createQQJPeopleReader } from '@/sources/qqj-people';
+import { createQQJQuestionMaterialReader } from '@/sources/qqj-context';
+import { createStoryInputReader } from '@/host/story-input';
+import { createWorldRepository } from '@/storage/world-repository';
+import { createConfigService } from '@/models/config';
+import { createModelRequester } from '@/models/client';
+import { advanceBatch } from '@/simulation/advance';
+import { createAppearanceSettings } from '@/host/appearance-settings';
+import { createAppearanceController } from '@/ui/appearance';
+import type { AppearanceThemeMode } from '@/host/appearance-settings';
 
 const HOST_ID = 'dollars-world-host';
 const MENU_ITEM_ID = 'dollars-world-open';
+const reader = createQQJPeopleReader();
+const materialReader = createQQJQuestionMaterialReader();
+const repository = createWorldRepository();
+const config = createConfigService();
+const dependencies = {
+  directory: reader, repository, story: createStoryInputReader(), config,
+  createModelRequester,
+  materials: materialReader,
+  advancer: { advance: advanceBatch },
+};
+const visible = ref(false);
+const appearanceSettings = createAppearanceSettings();
 
 function togglePanel() {
-  const host = document.getElementById(HOST_ID);
-  if (!host) return;
-  host.style.setProperty('display', host.style.display === 'none' ? 'contents' : 'none', 'important');
+  visible.value = !visible.value;
 }
 
 function mountPanel() {
@@ -19,19 +40,34 @@ function mountPanel() {
     host.id = HOST_ID;
     document.body.appendChild(host);
   }
-  host.style.setProperty('display', 'none', 'important');
+  host.style.setProperty('display', 'block', 'important');
+  host.style.position = 'fixed';
+  host.style.inset = '0';
+  host.style.zIndex = '10060';
+  host.style.pointerEvents = 'none';
+  const appearanceController = createAppearanceController({ host, settings: appearanceSettings });
+  const appearance = {
+    getTheme: () => appearanceSettings.get().appearanceTheme,
+    saveTheme: (mode: AppearanceThemeMode) => { appearanceSettings.save(mode); appearanceController.apply(); },
+    destroy: () => appearanceController.destroy(),
+  };
 
   const shadow = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
+  const icons = document.createElement('link');
+  icons.rel = 'stylesheet';
+  icons.href = '/css/fontawesome.min.css';
   const stylesheet = document.createElement('link');
   stylesheet.rel = 'stylesheet';
   const cssUrl = new URL(/* @vite-ignore */ './index.css', import.meta.url);
   cssUrl.search = new URL(import.meta.url).search;
   stylesheet.href = cssUrl.href;
-  shadow.replaceChildren(stylesheet);
+  shadow.replaceChildren(icons, stylesheet);
 
   const container = document.createElement('div');
   shadow.appendChild(container);
-  createApp(App, { onClose: togglePanel }).mount(container);
+  createApp({
+    setup: () => () => h(App, { dependencies, materialReader, config, appearance, visible: visible.value, onClose: () => { visible.value = false; } }),
+  }).mount(container);
 }
 
 function installMenuItem() {
@@ -45,7 +81,7 @@ function installMenuItem() {
     const icon = document.createElement('div');
     icon.className = 'fa-solid fa-diagram-project extensionsMenuExtensionButton';
     const label = document.createElement('span');
-    label.textContent = '人物世界';
+    label.textContent = '百面相';
     item.append(icon, label);
     item.addEventListener('click', togglePanel);
     menu.appendChild(item);
@@ -64,7 +100,7 @@ function initialize(tries = 0) {
   if (getHostContext()) {
     mountPanel();
     installMenuItem();
-    console.info('[Dollars] 人物世界骨架已加载');
+    console.info('[Dollars] 百面相已加载');
     return;
   }
   if (tries < 150) setTimeout(() => initialize(tries + 1), 200);

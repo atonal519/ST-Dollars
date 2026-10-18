@@ -31,6 +31,8 @@ export interface Activity {
 
 export interface WorldEvent {
   id: string;
+  /** The activity this result belongs to; null only for a world-level event. */
+  activityId: string | null;
   title: string;
   description: string;
   storyTime: StoryTime | null;
