@@ -1,0 +1,35 @@
+.bmx-world-content>.bmx-development-controls:empty{display:none}
+.bmx-hearing-page,.bmx-taste-page{padding-top:20px}
+.bmx-records-heading{display:flex;align-items:center;gap:8px;margin:0 0 4px}
+.bmx-records-heading h2{margin:0;font-size:16px;line-height:1.5;font-weight:600}
+.bmx-records-count{font-size:11px;color:var(--bmx-muted)}
+.bmx-records-actions{margin-left:auto;display:flex;align-items:center}
+.bmx-records-heading .bmx-development-start-compact{min-height:32px;padding:5px 10px}
+.bmx-hearing-task{padding:15px 0 17px;border-bottom:1px solid color-mix(in srgb,var(--bmx-ink) 12%,transparent)}
+.bmx-hearing-task:last-child{border-bottom:0}
+.bmx-hearing-header{position:relative;display:flex;align-items:flex-start;gap:10px;min-width:0;min-height:26px;padding-right:32px}
+.bmx-window .bmx-hearing-more{position:absolute;right:0;top:-1px;display:grid;place-items:center;width:28px;height:28px;min-width:28px;min-height:28px;padding:6px;border:0;border-radius:6px;background:transparent;color:var(--bmx-muted);cursor:default}
+.bmx-hearing-more svg{display:block;width:16px;height:16px;fill:currentColor}
+.bmx-mood-description{position:relative;margin-top:6px;font-size:13px;line-height:1.65;overflow-wrap:anywhere;color:color-mix(in srgb,var(--bmx-ink) 78%,transparent)}
+.bmx-window .bmx-mood-toggle{position:relative;display:block;width:100%;margin:0;padding:0;min-width:0;min-height:0;border:0;border-radius:6px;background:transparent;text-align:left;box-shadow:none;font:inherit;color:inherit}
+.bmx-window button.bmx-mood-toggle{padding-right:30px}
+.bmx-window .bmx-mood-toggle:hover:not(:disabled){background:transparent;border-color:transparent}
+.bmx-window .bmx-page .bmx-record-title{flex:1;min-width:0;margin:0;font-size:17px;font-weight:700;line-height:1.45;color:var(--bmx-ink)}
+.bmx-window .bmx-hearing-page .bmx-record-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bmx-task-status{flex:none;padding-top:3px;font-size:11px;line-height:1.55;color:var(--bmx-muted);white-space:nowrap}
+.bmx-mood-toggle .bmx-chevron{position:absolute;right:3px;bottom:7px;margin:0;transform:rotate(45deg)}
+.bmx-mood-toggle.is-open .bmx-chevron{transform:rotate(-135deg)}
+.bmx-window .bmx-page .bmx-hearing-body{margin-top:6px;font-size:13px;line-height:1.65;color:color-mix(in srgb,var(--bmx-ink) 78%,transparent)}
+.bmx-window .bmx-page .bmx-hearing-body{margin-top:4px;line-height:1.7;white-space:pre-wrap}
+.bmx-window .bmx-page .bmx-mood-overview{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.bmx-mood-toggle.is-open .bmx-mood-overview{display:block;overflow:visible}
+.bmx-mood-measure-box{position:absolute;inset:0;overflow:hidden;visibility:hidden;pointer-events:none}
+.bmx-mood-measure{display:block}
+.bmx-hearing-page .bmx-participants,.bmx-taste-page .bmx-participants{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:10px}
+.bmx-window :is(.bmx-hearing-page,.bmx-taste-page) .bmx-participant{display:flex;align-items:center;gap:6px;padding:0;min-width:0;min-height:28px;max-width:100%;border:0;background:transparent;text-align:left;font-size:12px;line-height:1.55}
+:is(.bmx-hearing-page,.bmx-taste-page) .bmx-participant>span{min-width:0;overflow-wrap:anywhere;white-space:normal;color:color-mix(in srgb,var(--bmx-ink) 84%,transparent)}
+.bmx-mood-entry{padding:15px 0 17px;border-bottom:1px solid color-mix(in srgb,var(--bmx-ink) 12%,transparent)}
+.bmx-mood-entry:last-child{border-bottom:0}
+.bmx-taste-page .bmx-plasma-landscape{width:100%;height:32px;margin:6px 0 0}
+.bmx-taste-page .bmx-participants{margin-top:8px}
+@media(max-width:340px){.bmx-window .bmx-page .bmx-record-title{font-size:15px}}

@@ -1,6 +1,7 @@
 {
   "display_name": "百面相",
-  "version": "0.1.0-alpha.11",
+  "version": "0.1.0-alpha.59",
   "author": "",
-  "js": "dist/index.js?ver=0.1.0-alpha.11"
+  "update_notice": "docs/updates-alpha59.md",
+  "js": "dist/index.js?ver=0.1.0-alpha.59"
 }

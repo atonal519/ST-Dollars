@@ -27,14 +27,25 @@ function removeTrailingCommas(source: string): string {
   return output;
 }
 
+/** Normalize only explicit floor-reference arrays; identity and prose stay untouched. */
+function normalizeSourceSeqs(value:unknown):unknown {
+  if(Array.isArray(value)){const next=value.map(normalizeSourceSeqs);return next.some((item,index)=>item!==value[index])?next:value;}
+  if(!value||typeof value!=='object')return value;
+  let changed=false;const next=Object.fromEntries(Object.entries(value).map(([key,item])=>{
+    let normalized=normalizeSourceSeqs(item);
+    if(key==='sourceSeqs'&&Array.isArray(item))normalized=item.map(seq=>typeof seq==='string'&&/^\d+$/.test(seq.trim())&&Number.isSafeInteger(Number(seq.trim()))?Number(seq.trim()):seq);
+    if(Array.isArray(normalized)&&Array.isArray(item)&&normalized.every((seq,index)=>seq===item[index]))normalized=item;
+    changed ||= normalized!==item;return[key,normalized];
+  }));return changed?next:value;
+}
 /** Extract one balanced JSON value without changing punctuation inside quoted story text. */
 export function extractJson(value: unknown): unknown {
-  if (typeof value !== 'string') return value;
+  if (typeof value !== 'string') return normalizeSourceSeqs(value);
   const source = stripFence(value);
-  const candidates = [source, ...Array.from(source.matchAll(/[\[{]/g), match => balancedAt(source, match.index!)).filter((item): item is string => Boolean(item))];
-  for (const candidate of candidates) {
-    try { return JSON.parse(candidate); } catch { /* Try tolerant trailing-comma parsing. */ }
-    try { return JSON.parse(removeTrailingCommas(candidate)); } catch { /* Try a later balanced object. */ }
-  }
+  const first = source.search(/[\[{]/);
+  const candidate = first < 0 ? source : balancedAt(source, first);
+  if (!candidate) throw new Error('模型返回内容无法解析为JSON。');
+  try { return normalizeSourceSeqs(JSON.parse(candidate)); } catch { /* Try tolerant trailing-comma parsing. */ }
+  try { return normalizeSourceSeqs(JSON.parse(removeTrailingCommas(candidate))); } catch { /* The outer value is malformed; do not accept an inner fragment. */ }
   throw new Error('模型返回内容无法解析为JSON。');
 }

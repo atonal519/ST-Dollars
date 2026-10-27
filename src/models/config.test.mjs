@@ -50,3 +50,65 @@ test('a following secondary resolves the primary preset while retaining the seco
   await config.saveConfig({ primary: {}, primaryPresetId: 'p1', secondaryFollowsPrimary: true, secondaryPresetId: 'p2' });
   assert.equal(record.data.secondaryPresetId, 'p2'); assert.equal(record.data.secondary.key, 'old-key');
 });
+
+test('roles can be configured independently, and shared-pool edits preserve other entries and never copy keys to Dollars settings', async () => {
+  const oldST = globalThis.SillyTavern; const oldLuker = globalThis.Luker;
+  try {
+    const context = { extensionSettings: {
+      'st-dollars': { appearanceTheme: 'night' },
+      'schedule-planner': { marker: 'keep-pool', apiPresets: [
+        { id: 'main', name: '主', url: 'https://old.example/v1', key: 'pool-secret', model: 'old-model', extra: 'preserve' },
+        { id: 'other', name: '其它', url: 'https://other.example/v1', key: 'other-secret', model: 'other-model', vendor: true },
+      ] },
+    }, saveSettingsDebounced() {} };
+    globalThis.SillyTavern = { getContext: () => context };
+    let record = { data: { marker: 'keep-record', primary: { url: 'https://local.example/v1', model: 'local', key: 'local-secret' } }, revision: 1 };
+    const client = { async get() { return record; }, async put(_collection, _id, data, revision) { record = { data, revision: revision + 1 }; } };
+    const readPool = () => context.extensionSettings['schedule-planner'].apiPresets.map(({ id, name, url, key, model }) => ({ id, name, url, key, model }));
+    const config = createConfigService(client, readPool);
+    await config.saveEditor('primary', { url: 'https://local.example/v1', model: 'main-only', key: '' });
+    assert.equal(record.data.primary.model, 'main-only');
+    assert.equal(record.data.primary.key, 'local-secret');
+    assert.equal(record.data.marker, 'keep-record');
+    assert.equal(record.data.secondary, undefined);
+    await config.selectApi('primary', { mode: 'preset', presetId: 'main' });
+    await config.saveEditor('primary', { url: 'https://updated.example/v1', model: 'updated-model', key: '' });
+    const pool = context.extensionSettings['schedule-planner'].apiPresets;
+    assert.equal(pool[0].key, 'pool-secret');
+    assert.equal(pool[0].extra, 'preserve');
+    assert.deepEqual(pool[1], { id: 'other', name: '其它', url: 'https://other.example/v1', key: 'other-secret', model: 'other-model', vendor: true });
+    assert.equal(context.extensionSettings['schedule-planner'].marker, 'keep-pool');
+    assert.equal(JSON.stringify(record.data).includes('pool-secret'), false);
+    const newId = await config.savePresetAs('primary', '副本', { url: 'https://copy.example', model: 'copy-model', key: '' });
+    assert.equal(context.extensionSettings['schedule-planner'].apiPresets.find(item => item.id === newId).key, 'pool-secret');
+    await config.deletePreset(newId);
+    assert.equal(context.extensionSettings['schedule-planner'].apiPresets.some(item => item.id === newId), false);
+    assert.equal(record.data.primaryPresetId, undefined);
+    assert.equal(record.data.appearanceTheme, undefined);
+    assert.equal(context.extensionSettings['st-dollars'].appearanceTheme, 'night');
+  } finally {
+    if (oldST === undefined) delete globalThis.SillyTavern; else globalThis.SillyTavern = oldST;
+    if (oldLuker === undefined) delete globalThis.Luker; else globalThis.Luker = oldLuker;
+  }
+});
+
+test('reading an absent shared pool is pure, while confirmed preset creation initializes it', async () => {
+  const oldST = globalThis.SillyTavern; const oldLuker = globalThis.Luker;
+  try {
+    const context = { extensionSettings: { 'schedule-planner': { marker: 'keep' } }, writes: 0, saveSettingsDebounced() { this.writes++; } };
+    globalThis.SillyTavern = { getContext: () => context };
+    let record = null;
+    const client = { async get() { return record; }, async put(_collection, _id, data, revision) { record = { data, revision: revision + 1 }; } };
+    const config = createConfigService(client);
+    assert.deepEqual((await config.getConfig()).presets, []);
+    assert.deepEqual(context.extensionSettings['schedule-planner'], { marker: 'keep' });
+    assert.equal(context.writes, 0);
+    const id = await config.savePresetAs('primary', '首次预设', { url: 'https://models.example', model: 'model-a', key: 'stub-key' });
+    assert.deepEqual(context.extensionSettings['schedule-planner'].apiPresets.map(item => item.id), [id]);
+    assert.equal(context.extensionSettings['schedule-planner'].marker, 'keep');
+    assert.equal(context.writes, 1);
+  } finally {
+    if (oldST === undefined) delete globalThis.SillyTavern; else globalThis.SillyTavern = oldST;
+    if (oldLuker === undefined) delete globalThis.Luker; else globalThis.Luker = oldLuker;
+  }
+});

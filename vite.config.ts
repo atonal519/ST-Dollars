@@ -13,6 +13,7 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: true,
     target: 'esnext',
+    commonjsOptions: { include: [/node_modules/, /src\/vendor\/cytoscape\.min\.cjs$/] },
     rollupOptions: {
       input: path.resolve(root, 'src/index.ts'),
       output: { format: 'es', entryFileNames: '[name].js', assetFileNames: '[name].[ext]' },

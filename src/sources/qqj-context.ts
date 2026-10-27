@@ -1,11 +1,14 @@
+import {boundContextReads} from './qqj-context-boundary';
 import type { QuestionMaterialRead, QuestionMaterialReader, QuestionMaterialRef, QuestionMaterialRequest } from '../application/contracts';
 import type { SourceRef } from '../domain/world';
 import { decodeQQJPersonId } from './qqj-person-id';
+import {normalizeQQJProfileText} from './qqj-profile';
 export { encodeQQJPersonId } from './qqj-person-id';
 
 interface PublicBridge {
   schemaVersion: number;
   kind: string;
+  getSnapshot?: () => unknown;
   readContext(request: { query: string; entityIds: string[]; maxCharacters: number }): Promise<unknown>;
 }
 
@@ -60,7 +63,7 @@ function errorMessage(value: unknown, fallback: string): string {
 export function createQQJQuestionMaterialReader({
   getGlobals = () => globalThis as typeof globalThis & { qqj_v3_public_bridge_v1?: unknown },
 }: { getGlobals?: () => { qqj_v3_public_bridge_v1?: unknown } } = {}): QuestionMaterialReader {
-  return {
+  const reader:QuestionMaterialReader = {
     async readForQuestion(request: QuestionMaterialRequest): Promise<QuestionMaterialRead> {
       const decoded = request.personIds.map(decodeQQJPersonId);
       if (decoded.some(identity => identity === null)) {
@@ -122,7 +125,7 @@ export function createQQJQuestionMaterialReader({
         // Keep QQJ's per-person boundary intact; routerText is never assigned as actor knowledge.
         return [{
           personId: `qqj:${JSON.stringify([person.qqjChatId, person.entityId])}`,
-          profileText: cleanText(actor.profileText),
+          profileText: normalizeQQJProfileText(actor.profileText),
           stateText: cleanText(actor.stateText),
           memoryText: cleanText(actor.memoryText),
           refs: materialRefs(actor.refs),
@@ -151,5 +154,15 @@ export function createQQJQuestionMaterialReader({
         coverage: { partial, cseStatus },
       });
     },
+    async readForQuestions(requests, {throughSeq}) {
+      const bridge=record(getGlobals().qqj_v3_public_bridge_v1) as unknown as PublicBridge|null;
+      let snapshot:unknown;
+      try{if(bridge?.schemaVersion===1&&bridge.kind==='qqj-public-memory-bridge'&&typeof bridge.getSnapshot==='function')snapshot=await bridge.getSnapshot();}catch{/* Missing provenance removes dynamic references, not the business task. */}
+      const reads:QuestionMaterialRead[]=[];
+      for(const request of requests)reads.push(await reader.readForQuestion(request));
+      const chatIds=[...new Set(requests.flatMap(request=>request.personIds.map(id=>decodeQQJPersonId(id)?.qqjChatId).filter(Boolean)))];
+      return boundContextReads(reads,snapshot,throughSeq,chatIds.length===1?chatIds[0]!:null);
+    },
   };
+  return reader;
 }

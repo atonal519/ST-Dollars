@@ -14,8 +14,31 @@ const participantOffsets: GraphPoint[] = [
   { x: 0, y: -108 }, { x: 0, y: 108 }, { x: -122, y: 0 }, { x: 122, y: 0 },
 ];
 
-/** Stable cluster placement follows only explicit person/activity participation. */
+/** Completed activities are positioned beside their participants and do not extend the default view. */
 export function layoutGraph(graph: GraphData): GraphLayout {
+  const openActivities = graph.nodes.filter(node => node.type === 'activity' && node.status !== 'completed');
+  const openIds = new Set(openActivities.map(node => node.id));
+  const current = layoutOpenGraph({
+    nodes: graph.nodes.filter(node => node.type === 'person' || openIds.has(node.id)),
+    edges: graph.edges.filter(edge => openIds.has(edge.target)),
+  });
+  const historical = graph.nodes.filter(node => node.type === 'activity' && node.status === 'completed').sort((a, b) => a.id.localeCompare(b.id));
+  const points = new Map(current.points);
+  historical.forEach((activity, index) => {
+    const participantPoints = graph.edges
+      .filter(edge => edge.target === activity.id)
+      .map(edge => points.get(edge.source))
+      .filter((point): point is GraphPoint => Boolean(point));
+    const center = participantPoints.length
+      ? participantPoints.reduce((sum, point) => ({ x: sum.x + point.x / participantPoints.length, y: sum.y + point.y / participantPoints.length }), { x: 0, y: 0 })
+      : { x: 520, y: 36 + index * 72 };
+    points.set(activity.id, { x: center.x + 210 + (index % 2) * 54, y: center.y + Math.floor(index / 2) * 62 });
+  });
+  return { ...current, points };
+}
+
+/** Stable cluster placement follows only explicit person/activity participation. */
+function layoutOpenGraph(graph: GraphData): GraphLayout {
   const nodes = graph.nodes.slice().sort((a, b) => a.id.localeCompare(b.id));
   const byId = new Map(nodes.map(node => [node.id, node]));
   const adjacency = new Map(nodes.map(node => [node.id, [] as string[]]));
@@ -62,17 +85,48 @@ export function layoutGraph(graph: GraphData): GraphLayout {
       activityPositions.set(activity.id, anchor ?? { x: index % 2 ? 300 : 120, y: 520 + Math.floor((index - activityAnchors.length) / 2) * 90 });
     });
 
-    const peopleByMembership = new Map<string, GraphNode[]>();
+    const activeActivities = component.activities.filter(activity => activity.status === 'active');
+    const activeActivityIds = new Set(activeActivities.map(activity => activity.id));
+    const activePeople = component.people.filter(person => (adjacency.get(person.id) ?? []).some(id => activeActivityIds.has(id)))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const activePeopleIds = new Set(activePeople.map(person => person.id));
+    const placedActivePeople: GraphPoint[] = [];
+    for (const [personIndex, person] of activePeople.entries()) {
+      const activeIds = (adjacency.get(person.id) ?? []).filter(id => activeActivityIds.has(id)).sort();
+      const center = activityPositions.get(activeIds[0])!;
+      const extraRing = Math.floor(personIndex / participantOffsets.length) * 58;
+      let best: GraphPoint | undefined;
+      let bestClearance = Number.NEGATIVE_INFINITY;
+      for (const offset of participantOffsets) {
+        const candidate = {
+          x: center.x + offset.x + (offset.x === 0 ? extraRing : Math.sign(offset.x) * extraRing),
+          y: center.y + offset.y + (offset.y === 0 ? extraRing : Math.sign(offset.y) * extraRing),
+        };
+        const activityClearance = Math.min(...activeActivities.map(activity => {
+          const point = activityPositions.get(activity.id)!;
+          return Math.hypot(point.x - candidate.x, point.y - candidate.y) - 90;
+        }));
+        const peopleClearance = placedActivePeople.length
+          ? Math.min(...placedActivePeople.map(point => Math.hypot(point.x - candidate.x, point.y - candidate.y) - 55))
+          : Number.POSITIVE_INFINITY;
+        const clearance = Math.min(activityClearance, peopleClearance);
+        if (clearance > bestClearance) { best = candidate; bestClearance = clearance; }
+      }
+      if (best) { local.set(person.id, best); placedActivePeople.push(best); }
+    }
+
+    const peopleByMembership = new Map<string, { ids: string[]; people: GraphNode[] }>();
     for (const person of component.people) {
+      if (activePeopleIds.has(person.id)) continue;
       const ids = (adjacency.get(person.id) ?? []).filter(id => activityPositions.has(id)).sort();
-      const key = ids.join('\u0000');
-      const group = peopleByMembership.get(key) ?? [];
-      group.push(person);
+      const anchors = ids;
+      const key = `all:${anchors.join('\u0000')}`;
+      const group = peopleByMembership.get(key) ?? { ids: anchors, people: [] };
+      group.people.push(person);
       peopleByMembership.set(key, group);
     }
 
-    for (const [membership, people] of peopleByMembership) {
-      const ids = membership.split('\u0000').filter(Boolean);
+    for (const { ids, people } of peopleByMembership.values()) {
       const centers = ids.map(id => activityPositions.get(id)!).filter(Boolean);
       const center = {
         x: centers.reduce((sum, point) => sum + point.x, 0) / centers.length,
@@ -100,16 +154,14 @@ export function layoutGraph(graph: GraphData): GraphLayout {
     x: 60 + radicalInverse(index + 1, 2) * 300,
     y: groupTop + 24 + radicalInverse(index + 1, 3) * isolatedFieldHeight,
   }));
-  const occupied: GraphPoint[] = [];
   const usedCandidates = new Set<number>();
+  const clearances = new Float64Array(candidates.length).fill(Number.POSITIVE_INFINITY);
   for (const person of isolatedPeople) {
     let chosenIndex = -1;
     let greatestClearance = -1;
     candidates.forEach((candidate, candidateIndex) => {
       if (usedCandidates.has(candidateIndex)) return;
-      const clearance = occupied.length
-        ? Math.min(...occupied.map(point => Math.max(Math.abs(point.x - candidate.x) / 64, Math.abs(point.y - candidate.y) / 48)))
-        : Number.POSITIVE_INFINITY;
+      const clearance = clearances[candidateIndex];
       if (clearance > greatestClearance) {
         chosenIndex = candidateIndex;
         greatestClearance = clearance;
@@ -117,8 +169,15 @@ export function layoutGraph(graph: GraphData): GraphLayout {
     });
     const point = candidates[chosenIndex];
     usedCandidates.add(chosenIndex);
-    occupied.push(point);
     points.set(person.id, point);
+    for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex++) {
+      if (usedCandidates.has(candidateIndex)) continue;
+      const candidate = candidates[candidateIndex];
+      clearances[candidateIndex] = Math.min(clearances[candidateIndex], Math.max(
+        Math.abs(point.x - candidate.x) / 64,
+        Math.abs(point.y - candidate.y) / 48,
+      ));
+    }
   }
 
   const lastY = Math.max(120, ...[...points.values()].map(point => point.y));

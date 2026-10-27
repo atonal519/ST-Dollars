@@ -1,18 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { createServer } from 'vite';
+
+const require = createRequire(import.meta.url);
+const cytoscape = require('./vendor/cytoscape.min.cjs');
 
 let server;
 let worldModule;
 let graphModule;
 let layoutModule;
-let viewportModule;
+let presentationModule;
+let cytoscapeAdapterModule;
+let cytoscapeStyleModule;
 test.before(async () => {
   server = await createServer({ configFile: false, server: { middlewareMode: true, hmr: false }, appType: 'custom' });
   worldModule = await server.ssrLoadModule('/src/domain/world.ts');
   graphModule = await server.ssrLoadModule('/src/graph/project-world.ts');
   layoutModule = await server.ssrLoadModule('/src/graph/layout.ts');
-  viewportModule = await server.ssrLoadModule('/src/graph/viewport.ts');
+  presentationModule = await server.ssrLoadModule('/src/graph/presentation.ts');
+  cytoscapeAdapterModule = await server.ssrLoadModule('/src/graph/cytoscape-adapter.ts');
+  cytoscapeStyleModule = await server.ssrLoadModule('/src/graph/cytoscape-style.ts');
 });
 test.after(async () => { await server?.close(); });
 
@@ -46,6 +54,101 @@ test('projectWorld maps two equal people to one shared activity by stable IDs', 
   assert.deepEqual(world, before);
 });
 
+test('graph presentation foregrounds only active activities and explicit participants, then reveals selected relationships', () => {
+  const world = worldModule.createEmptyWorld();
+  world.people = [
+    { id: 'p1', name: '安安一号', status: 'model status says active', description: '', sources: [] },
+    { id: 'p2', name: '安安二号', status: 'unknown', description: '', sources: [] },
+    { id: 'p3', name: '独立人物', status: 'unknown', description: '', sources: [] },
+  ];
+  world.activities = [
+    { id: 'current', title: '当前', status: 'active', participantIds: ['p1'], description: '', sources: [] },
+    { id: 'waiting', title: '等待', status: 'waiting', participantIds: ['p2'], description: '', sources: [] },
+    { id: 'past', title: '历史', status: 'completed', participantIds: ['p1', 'p2'], description: '', sources: [] },
+  ];
+  const graph = graphModule.projectWorld(world);
+  const initial = presentationModule.graphPresentation(graph, null);
+  assert.deepEqual(initial.activeActivityIds, ['current']);
+  assert.deepEqual(initial.foregroundPersonIds, ['p1']);
+  assert.deepEqual(initial.visibleActivityIds, ['current', 'waiting']);
+  assert.deepEqual(initial.visibleEdgeIds, ['p1:current']);
+  assert.deepEqual(presentationModule.graphPresentation(graph, 'p2').visibleActivityIds, ['current', 'waiting', 'past']);
+  assert.deepEqual(presentationModule.graphPresentation(graph, 'p2').visibleEdgeIds, ['p1:current', 'p2:waiting', 'p2:past']);
+  assert.deepEqual(presentationModule.graphPresentation(graph, 'past').visibleActivityIds, ['current', 'waiting', 'past']);
+  assert.deepEqual(presentationModule.graphPresentation(graph, 'past').visibleEdgeIds, ['p1:current', 'p1:past', 'p2:past']);
+  assert.deepEqual(presentationModule.graphPresentation(graph, 'past').foregroundPersonIds, ['p1', 'p2']);
+  const noActive = graphModule.projectWorld({ ...world, activities: world.activities.map(activity => ({ ...activity, status: 'completed' })) });
+  const browseAll = presentationModule.graphPresentation(noActive, null);
+  assert.deepEqual(browseAll.foregroundPersonIds, ['p1', 'p2', 'p3']);
+  assert.deepEqual(browseAll.visibleActivityIds, []);
+  assert.deepEqual(browseAll.visibleEdgeIds, []);
+  assert.deepEqual(noActive.nodes.filter(node => node.type === 'person').map(node => node.id), ['p1', 'p2', 'p3']);
+});
+
+test('real Cytoscape hides completed titles by default and restores a selected person activity title', () => {
+  const graph = {
+    nodes: [
+      { id: 'p1', type: 'person', label: '安安一号', status: '', description: '' },
+      { id: 'active', type: 'activity', label: '当前事项', status: 'active', description: '' },
+      { id: 'past', type: 'activity', label: '已完成事项', status: 'completed', description: '' },
+    ],
+    edges: [
+      { id: 'p1:active', source: 'p1', target: 'active', type: 'participates' },
+      { id: 'p1:past', source: 'p1', target: 'past', type: 'participates' },
+    ],
+  };
+  const colors = { ink: '#eee', muted: '#999', line: '#666', star: '#ccd', selected: '#c86', base: '#111' };
+  const cy = cytoscape({ headless: true, styleEnabled: true, layout: { name: 'preset' }, style: cytoscapeStyleModule.createCytoscapeStyle(colors) });
+  try {
+    cytoscapeAdapterModule.syncGraphElements(cy, graph);
+    cytoscapeAdapterModule.syncGraphPresentation(cy, graph, null, false, colors);
+    const past = cy.getElementById('past');
+    assert.equal(past.style('label'), '');
+    assert.equal(past.data('displayLabel'), '');
+    assert.equal(past.style('display'), 'none');
+    assert.equal(cy.getElementById('p1:past').style('display'), 'none');
+
+    cytoscapeAdapterModule.syncGraphPresentation(cy, graph, 'p1', false, colors);
+    assert.match(past.style('label'), /已完成/);
+    assert.match(past.data('displayLabel'), /已完成/);
+    assert.equal(past.style('display'), 'element');
+
+    cytoscapeAdapterModule.syncGraphPresentation(cy, graph, null, false, colors);
+    assert.equal(past.style('label'), '');
+    assert.equal(past.data('displayLabel'), '');
+    assert.equal(past.style('display'), 'none');
+  } finally {
+    cy.destroy();
+  }
+});
+
+test('selecting a completed activity reveals its full title and explicit participants only for that selection', () => {
+  const graph = {
+    nodes: [
+      { id: 'p1', type: 'person', label: '历史参与者全名', status: '', description: '' },
+      { id: 'live', type: 'activity', label: '当前活动', status: 'active', description: '' },
+      { id: 'past', type: 'activity', label: '完成活动全名', status: 'completed', description: '' },
+    ],
+    edges: [{ id: 'p1:past', source: 'p1', target: 'past', type: 'participates' }],
+  };
+  const colors = { ink: '#eee', muted: '#999', line: '#666', star: '#ccd', selected: '#c86', base: '#111' };
+  const cy = cytoscape({ headless: true, styleEnabled: true, layout: { name: 'preset' }, style: cytoscapeStyleModule.createCytoscapeStyle(colors) });
+  try {
+    cytoscapeAdapterModule.syncGraphElements(cy, graph);
+    cytoscapeAdapterModule.syncGraphPresentation(cy, graph, null, false, colors);
+    assert.equal(cy.getElementById('past').style('display'), 'none');
+    assert.equal(cy.getElementById('p1').data('displayLabel'), '');
+    cytoscapeAdapterModule.syncGraphPresentation(cy, graph, 'past', false, colors);
+    assert.equal(cy.getElementById('past').style('display'), 'element');
+    assert.match(cy.getElementById('past').data('displayLabel'), /完成活动全名/);
+    assert.equal(cy.getElementById('p1:past').style('display'), 'element');
+    assert.equal(cy.getElementById('p1').data('displayLabel'), '历史参…');
+    cytoscapeAdapterModule.syncGraphPresentation(cy, graph, null, false, colors);
+    assert.equal(cy.getElementById('past').style('display'), 'none');
+    assert.equal(cy.getElementById('p1:past').style('display'), 'none');
+  } finally { cy.destroy(); }
+});
+
 test('layout is stable by ID, retains isolated people and activity nodes, and leaves graph facts unchanged', () => {
   const graph = {
     nodes: [
@@ -73,12 +176,22 @@ test('layout is stable by ID, retains isolated people and activity nodes, and le
   const distance = (left, right) => Math.hypot(left.x - right.x, left.y - right.y);
   assert.ok(distance(first.points.get('p1'), first.points.get('a1')) < 180);
   assert.ok(distance(first.points.get('p2'), first.points.get('a1')) < 180);
+  assert.ok(distance(first.points.get('p1'), first.points.get('a1')) > 44);
+  assert.ok(distance(first.points.get('p2'), first.points.get('a1')) > 44);
   assert.ok(first.points.get('p3').y > Math.max(first.points.get('a1').y, first.points.get('a2').y));
+  const withHistory = {
+    nodes: [...graph.nodes, ...Array.from({ length: 12 }, (_, index) => ({ id: `past-${index}`, type: 'activity', label: `Past ${index}`, status: 'completed', description: '' }))],
+    edges: [...graph.edges],
+  };
+  withHistory.edges.push(...Array.from({ length: 12 }, (_, index) => ({ id: `p3:past-${index}`, source: 'p3', target: `past-${index}`, type: 'participates' })));
+  const historyLayout = layoutModule.layoutGraph(withHistory);
+  assert.equal(historyLayout.height, first.height);
+  assert.equal(historyLayout.width, first.width);
   assert.deepEqual(graph, before);
 });
 
-test('isolated people use a stable scattered layout for twenty and forty people', () => {
-  for (const count of [20, 40]) {
+test('isolated people use a stable scattered layout for twenty, forty, and one hundred people', () => {
+  for (const count of [20, 40, 100]) {
     const graph = {
       nodes: Array.from({ length: count }, (_, index) => ({
         id: `person-${String(index).padStart(2, '0')}`,
@@ -108,17 +221,27 @@ test('isolated people use a stable scattered layout for twenty and forty people'
   }
 });
 
-test('viewport zoom keeps the anchor fixed, clamps scale, and centers a fitted graph', () => {
-  const initial = { x: -80, y: 12, scale: 1 };
-  const anchor = { x: 140, y: 90 };
-  const before = { x: (anchor.x - initial.x) / initial.scale, y: (anchor.y - initial.y) / initial.scale };
-  const zoomed = viewportModule.zoomAt(initial, 1.4, anchor);
-  assert.ok(Math.abs((anchor.x - zoomed.x) / zoomed.scale - before.x) < 1e-9);
-  assert.ok(Math.abs((anchor.y - zoomed.y) / zoomed.scale - before.y) < 1e-9);
-  assert.equal(viewportModule.zoomAt(initial, 99, anchor).scale, viewportModule.MAX_GRAPH_SCALE);
-  assert.equal(viewportModule.zoomAt(initial, 0.001, anchor).scale, viewportModule.MIN_GRAPH_SCALE);
-  const fitted = viewportModule.fitGraph(520, 400, { x: 360, y: 600 });
-  assert.ok(fitted.scale <= 0.92);
-  assert.ok(Math.abs((fitted.x + 520 * fitted.scale / 2) - 180) < 1e-9);
-  assert.ok(Math.abs((fitted.y + 400 * fitted.scale / 2) - 300) < 1e-9);
+test('people shared by multiple active activities keep separated touch centers', () => {
+  const graph = {
+    nodes: [
+      { id: 'p1', type: 'person', label: '共享人物', status: '', description: '' },
+      { id: 'p2', type: 'person', label: '活动一人物', status: '', description: '' },
+      { id: 'p3', type: 'person', label: '活动二人物', status: '', description: '' },
+      { id: 'a1', type: 'activity', label: '当前活动一', status: 'active', description: '' },
+      { id: 'a2', type: 'activity', label: '当前活动二', status: 'active', description: '' },
+    ],
+    edges: [
+      { id: 'p1:a1', source: 'p1', target: 'a1', type: 'participates' },
+      { id: 'p1:a2', source: 'p1', target: 'a2', type: 'participates' },
+      { id: 'p2:a1', source: 'p2', target: 'a1', type: 'participates' },
+      { id: 'p3:a2', source: 'p3', target: 'a2', type: 'participates' },
+    ],
+  };
+  const layout = layoutModule.layoutGraph(graph);
+  for (const personId of ['p1', 'p2', 'p3']) {
+    for (const activityId of ['a1', 'a2']) {
+      const person = layout.points.get(personId), activity = layout.points.get(activityId);
+      assert.ok(Math.hypot(person.x - activity.x, person.y - activity.y) > 44, `${personId} should not overlap ${activityId}`);
+    }
+  }
 });

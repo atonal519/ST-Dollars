@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import { classifyKnowledge } from '../domain/world-facts';
 import { computed } from 'vue';
 import type { QuestionMaterialReader } from '../application/contracts';
 import type { Activity, Person, WorldEvent, WorldSnapshot } from '../domain/world';
 import PersonMaterials from './PersonMaterials.vue';
+import { displaySourceLabel } from './source-label';
+import { formatStoryTime } from './story-time';
 
-const props = defineProps<{ world: WorldSnapshot; selected: Person | Activity | WorldEvent; materialReader: QuestionMaterialReader }>();
-const emit = defineEmits<{ back: []; 'select-event': [id: string] }>();
+const props = defineProps<{ world: WorldSnapshot; selected: Person | Activity | WorldEvent; materialReader: QuestionMaterialReader; backLabel: string }>();
+const emit = defineEmits<{ back: []; 'select-event': [id: string]; 'select-activity': [id: string] }>();
 const isPerson = computed(() => 'name' in props.selected);
 const isEvent = computed(() => 'activityId' in props.selected);
 const selectedPerson = computed(() => isPerson.value ? props.selected as Person : null);
@@ -25,6 +28,9 @@ const knownEvents = computed(() => selectedPerson.value
     .map(item => ({ ...item, event: props.world.events.find(event => event.id === item.eventId) }))
   : []);
 
+const knowledgeLabel = (item: import('../domain/world').Knowledge) => { const event = props.world.events.find(e => e.id === item.eventId); const kind = event ? classifyKnowledge(item, event) : 'invalidated'; return kind === 'fact' ? '已知事实' : kind === 'retained-report' ? '收到过的说法（不代表事实为真）' : '已失效的知情记录'; };
+const simulationWindow = computed(() => props.world.simulationRanges?.find(w => w.id === selectedEvent.value?.simulationWindowId));
+
 function activityStatus(activity: Activity): string {
   return { planned: '计划中', active: '进行中', waiting: '等待中', completed: '已完成' }[activity.status];
 }
@@ -38,7 +44,7 @@ function personById(id: string): Person | undefined {
 <template>
   <section class="bmx-reader" aria-live="polite">
     <header class="bmx-reader-head">
-      <button class="bmx-back" type="button" aria-label="返回人物图谱" @click="emit('back')"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i>返回图谱</button>
+      <button class="bmx-back" type="button" aria-label="返回" @click="emit('back')"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i>{{ backLabel }}</button>
       <span v-if="selectedPerson" class="bmx-kicker">人物资料</span>
       <span v-else-if="selectedActivity" class="bmx-kicker">活动经过</span>
       <span v-else class="bmx-kicker">已发生事件</span>
@@ -49,7 +55,7 @@ function personById(id: string): Person | undefined {
         <h2>{{ selectedPerson.name }}</h2>
         <p class="bmx-person-description">{{ selectedPerson.description }}</p>
         <h3>资料来源</h3>
-        <p v-for="source in selectedPerson.sources" :key="`${source.kind}:${source.id}`">{{ source.label }}</p>
+        <p v-for="source in selectedPerson.sources" :key="`${source.kind}:${source.id}`">{{ displaySourceLabel(source, world.id ?? '') }}</p>
         <PersonMaterials :reader="materialReader" :person-id="selectedPerson.id" />
         <template v-if="relatedActivities.length">
           <h3>相关活动</h3>
@@ -59,13 +65,13 @@ function personById(id: string): Person | undefined {
         </template>
         <template v-if="relatedEvents.length">
           <h3>已发生的相关事件</h3>
-          <article v-for="event in relatedEvents" :key="event.id"><button class="bmx-event-link" type="button" @click="emit('select-event', event.id)">{{ event.title }}</button><p v-if="event.description !== event.title">{{ event.description }}</p><p v-for="source in event.sources" :key="`${source.kind}:${source.id}`">来源：{{ source.label }}</p></article>
+          <article v-for="event in relatedEvents" :key="event.id"><button class="bmx-event-link" type="button" @click="emit('select-event', event.id)">{{ event.title }}</button><p v-if="event.correction">已由正文修正：{{ event.correction.reason }}</p><p v-if="event.description !== event.title">{{ event.description }}</p><p v-for="source in event.sources" :key="`${source.kind}:${source.id}`">来源：{{ displaySourceLabel(source, world.id ?? '') }}</p></article>
         </template>
         <template v-if="knownEvents.length">
           <h3>人物获知</h3>
           <article v-for="item in knownEvents" :key="item.eventId">
-            <p>{{ item.event?.title ?? '相关事件' }}：{{ item.reason }}</p>
-            <p v-for="source in item.sources" :key="`${source.kind}:${source.id}`">来源：{{ source.label }}</p>
+            <p>{{ knowledgeLabel(item) }}：<button v-if="item.event" class="bmx-event-link" type="button" @click="emit('select-event', item.eventId)">{{ item.event.title }}</button>：{{ item.reason }}</p>
+            <p v-for="source in item.sources" :key="`${source.kind}:${source.id}`">来源：{{ displaySourceLabel(source, world.id ?? '') }}</p>
           </article>
         </template>
       </template>
@@ -79,20 +85,22 @@ function personById(id: string): Person | undefined {
         </template>
         <template v-if="selectedActivity.sources.length">
           <h3>活动来源</h3>
-          <p v-for="source in selectedActivity.sources" :key="`${source.kind}:${source.id}`">来源：{{ source.label }}</p>
+          <p v-for="source in selectedActivity.sources" :key="`${source.kind}:${source.id}`">来源：{{ displaySourceLabel(source, world.id ?? '') }}</p>
         </template>
         <template v-if="relatedEvents.length">
           <h3>相关已发生事件</h3>
-          <article v-for="event in relatedEvents" :key="event.id"><button class="bmx-event-link" type="button" @click="emit('select-event', event.id)">{{ event.title }}</button><p v-if="event.description !== event.title">{{ event.description }}</p><p v-for="source in event.sources" :key="`${source.kind}:${source.id}`">来源：{{ source.label }}</p></article>
+          <article v-for="event in relatedEvents" :key="event.id"><button class="bmx-event-link" type="button" @click="emit('select-event', event.id)">{{ event.title }}</button><p v-if="event.correction">已由正文修正：{{ event.correction.reason }}</p><p v-if="event.description !== event.title">{{ event.description }}</p><p v-for="source in event.sources" :key="`${source.kind}:${source.id}`">来源：{{ displaySourceLabel(source, world.id ?? '') }}</p></article>
         </template>
       </template>
       <template v-else-if="selectedEvent">
-        <p class="bmx-reader-label">推进时依据 · {{ selectedEvent.storyTime?.text ?? '未提供' }}</p>
+        <p class="bmx-reader-label">推进时依据 · {{ selectedEvent.storyTime ? formatStoryTime(selectedEvent.storyTime.text) : '未提供' }}</p>
         <h2>{{ selectedEvent.title }}</h2>
+        <p v-if="simulationWindow">幕后时间段：{{ simulationWindow.from.text }} → {{ simulationWindow.to.text }}</p>
+        <p v-if="selectedEvent.correction">已由正文修正：{{ selectedEvent.correction.reason }} <button class="bmx-event-link" type="button" @click="emit('select-event', selectedEvent!.correction!.byEventId)">{{ world.events.find(e => e.id === selectedEvent!.correction!.byEventId)?.title ?? '查看纠正事实' }}</button></p>
         <p v-if="selectedEvent.description !== selectedEvent.title">{{ selectedEvent.description }}</p>
         <template v-if="selectedEvent!.activityId && world.activities.find(item => item.id === selectedEvent!.activityId)">
           <h3>所属活动</h3>
-          <button class="bmx-event-link" type="button" @click="emit('back')">{{ world.activities.find(item => item.id === selectedEvent!.activityId)?.title }}</button>
+          <button class="bmx-event-link" type="button" @click="emit('select-activity', selectedEvent!.activityId!)">{{ world.activities.find(item => item.id === selectedEvent!.activityId)?.title }}</button>
         </template>
         <template v-if="selectedEvent.participantIds.length">
           <h3>相关人物</h3>
@@ -100,11 +108,11 @@ function personById(id: string): Person | undefined {
         </template>
         <template v-if="world.knowledge.some(item => item.eventId === selectedEvent!.id)">
           <h3>人物获知</h3>
-          <p v-for="item in world.knowledge.filter(entry => entry.eventId === selectedEvent!.id)" :key="item.personId">{{ personById(item.personId)?.name ?? '人物资料不可用' }}：{{ item.reason }}</p>
+          <p v-for="item in world.knowledge.filter(entry => entry.eventId === selectedEvent!.id)" :key="item.personId">{{ personById(item.personId)?.name ?? '人物资料不可用' }} · {{ knowledgeLabel(item) }}：{{ item.reason }}</p>
         </template>
         <template v-if="selectedEvent.sources.length">
           <h3>事件来源</h3>
-          <p v-for="source in selectedEvent.sources" :key="`${source.kind}:${source.id}`">{{ source.label }}</p>
+          <p v-for="source in selectedEvent.sources" :key="`${source.kind}:${source.id}`">{{ displaySourceLabel(source, world.id ?? '') }}</p>
         </template>
       </template>
     </div>

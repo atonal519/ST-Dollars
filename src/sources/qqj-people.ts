@@ -1,14 +1,7 @@
 import type { PeopleDirectoryRead, PeopleDirectoryReader } from '../application/contracts';
 import type { SourcePerson } from '../domain/source-people';
 import { encodeQQJPersonId } from './qqj-person-id';
-
-const PROFILE_GROUPS = [
-  { label: '基础信息', fields: [['gender', '性别'], ['age', '年龄'], ['birthday', '生日'], ['species', '种族'], ['notes', '补充资料']] },
-  { label: '外貌', fields: [['height', '身高'], ['build', '体型'], ['face', '面容'], ['hair', '发型发色'], ['eyes', '眼睛'], ['distinctiveFeatures', '辨识特征'], ['clothingStyle', '衣着风格'], ['appearance', '外貌补充']] },
-  { label: '身份', fields: [['occupation', '职业'], ['organization', '所属组织'], ['socialIdentity', '社会身份'], ['background', '背景经历'], ['identityRelations', '重要身份关系']] },
-  { label: '性格', fields: [['personality', '核心性格'], ['conduct', '处事方式'], ['expression', '表达习惯'], ['likes', '喜好'], ['dislikes', '厌恶'], ['principles', '原则与底线']] },
-  { label: 'NSFW', fields: [['nsfw', '成人向资料']] },
-] as const;
+import {PROFILE_GROUPS,projectQQJProfile} from './qqj-profile';
 
 const PROCESSING_STATUSES = new Set([
   'savingSelection', 'savingProfile', 'savingAvatar', 'merging', 'deleting', 'generating',
@@ -30,7 +23,8 @@ function splitAliases(value: unknown): string[] {
   return text(value).split(/[、，,\n;；]/u).map(value => value.trim()).filter(Boolean);
 }
 
-function profileDescription(profile: Record<string, unknown> | null, displayName: string, itemAliases: unknown): string {
+function profileDescription(profile: Record<string, unknown> | null, displayName: string, itemAliases: unknown, brief: string): string {
+  const manual=new Set(Array.isArray(profile?.manualFields)?profile.manualFields:[]);
   const aliases = [...splitAliases(itemAliases), ...splitAliases(profile?.aliases)]
     .filter(alias => alias !== displayName);
   const uniqueAliases = [...new Set(aliases)];
@@ -40,7 +34,7 @@ function profileDescription(profile: Record<string, unknown> | null, displayName
   let hasProfileContent = false;
   for (const group of PROFILE_GROUPS) {
     const fields = group.fields
-      .map(([field, label]) => [label, text(profile?.[field])] as const)
+      .map(([field, label]) => [manual.has(field)?`${label}（人工决定）`:label, text(profile?.[field])||(manual.has(field)?'当前字段为空':'')] as const)
       .filter(([, value]) => value.length > 0);
     if (!fields.length) continue;
     hasProfileContent = true;
@@ -49,8 +43,14 @@ function profileDescription(profile: Record<string, unknown> | null, displayName
     for (const [label, value] of fields) lines.push(`${label}：${value}`);
   }
 
-  if (!hasProfileContent) lines.push('千千结已识别此人物，尚无档案正文。');
+  if (!hasProfileContent) lines.push(brief || '千千结已识别此人物，尚无档案正文。');
   return lines.join('\n');
+}
+
+function profileIdentity(profile: Record<string, unknown> | null): string | undefined {
+  return [['occupation', '职业'], ['socialIdentity', '身份'], ['organization', '所属组织'], ['identityRelations', '重要关系']]
+    .flatMap(([field, label]) => { const value = text(profile?.[field]); return value ? [`${label}：${value}`] : []; })
+    .join('\n') || undefined;
 }
 
 function result(status: PeopleDirectoryRead['status'], message: string, people: SourcePerson[] = [], scopeId: string | null = null): PeopleDirectoryRead {
@@ -96,7 +96,10 @@ export function createQQJPeopleReader({ getGlobals = () => globalThis as typeof 
       for (const value of peopleSnapshot.items) {
         const item = record(value);
         const entityId = text(item?.entityId);
-        const profile = record(item?.profile);
+        const profile = projectQQJProfile(record(item?.profile));
+        // An explicit public profile owns even its empty fields; a brief must not refill them.
+        const briefText = profile ? '' : text(item?.identityBrief);
+        const brief = briefText ? `${record(item?.identityBriefSource)?.legacy === false ? '有据身份简介' : '历史身份简介（未记录引文）'}：${briefText}（作者参考，不代表在场或知情）` : '';
         const displayName = text(profile?.name) || text(item?.displayName) || text(item?.entityDisplayName);
         if (!entityId || !displayName) {
           invalidItems += 1;
@@ -105,9 +108,17 @@ export function createQQJPeopleReader({ getGlobals = () => globalThis as typeof 
         const id = encodeQQJPersonId(qqjChatId, entityId);
         people.push({
           id,
+          qqjPersonId:id,
           displayName,
           aliases: splitAliases(item?.aliases),
-          description: profileDescription(profile, displayName, item?.aliases),
+          description: profileDescription(profile, displayName, item?.aliases, brief),
+          profileMaterialProvided: profile !== null || Boolean(brief),
+          ...(Array.isArray(profile?.manualFields)?{manualProfile:Object.fromEntries(profile.manualFields.map(field=>[String(field),text(profile?.[String(field)])]))}:{}),
+          identityDescription: profileIdentity(profile) || brief || undefined,
+          specialRole: text(item?.specialRole) || undefined,
+          identitySummary: [['occupation','职业'],['socialIdentity','身份'],['organization','所属组织']].flatMap(([field,label])=>text(profile?.[field])?[`${label}：${text(profile?.[field])}`]:[]).join('\n')||undefined,
+          identityCaption: [['occupation','职业'],['socialIdentity','身份']].flatMap(([field,label])=>text(profile?.[field])?[`${label}：${text(profile?.[field])}`]:[]).join('\n')||undefined,
+          presentationSource: {personality:['personality','conduct','expression','likes','dislikes','principles'].flatMap(field=>text(profile?.[field])?[`${field}: ${text(profile?.[field])}`]:[]).join('\n'),relations:text(profile?.identityRelations)},
           source: { kind: 'plugin', id, label: '千千结人物档案' },
         });
       }
@@ -123,7 +134,7 @@ export function createQQJPeopleReader({ getGlobals = () => globalThis as typeof 
       }
       if (peopleStatus === 'ready') return result('empty', '千千结当前没有已确认的人物。', [], qqjChatId);
       if (WAITING_STATUSES.has(peopleStatus) || PROCESSING_STATUSES.has(peopleStatus)) {
-        return result('waiting', '千千结人物目录尚未加载；首楼未稳定或尚无识别记录时，这是正常等待状态。');
+        return result('waiting', '千千结人物目录尚未加载；首楼未稳定或尚无识别记录时，这是正常等待状态。', [], qqjChatId);
       }
       return result('error', '千千结人物目录返回了无法识别的状态。');
     },
